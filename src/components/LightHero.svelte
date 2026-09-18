@@ -5,7 +5,7 @@
   let canvasRef: HTMLCanvasElement | null = null;
   let animId = 0;
 
-  // Mouse inertia state (bounded small range)
+  // Bounded mouse interaction state (small range)
   let targetX = 0;
   let targetY = 0;
   let currentX = 0;
@@ -14,8 +14,8 @@
   // Click photon pulse energy
   let pulseEnergy = 0;
 
-  // Ambient cosmic dust particles
-  interface Mote {
+  // Floating ambient cosmic dust motes
+  interface Particle {
     x: number;
     y: number;
     vx: number;
@@ -24,18 +24,36 @@
     alpha: number;
     hue: number;
   }
-  const motes: Mote[] = [];
+  const particles: Particle[] = [];
 
-  // Spectral rainbow colors (physical wavelength gradient)
-  const spectralGradient = [
-    { r: 244, g: 63, b: 94 },  // Ruby Red
-    { r: 251, g: 113, b: 36 }, // Solar Orange
-    { r: 250, g: 204, b: 21 }, // Golden Yellow
-    { r: 74, g: 222, b: 128 }, // Emerald Green
-    { r: 56, g: 189, b: 248 }, // Cyan
-    { r: 99, g: 102, b: 241 }, // Royal Blue
-    { r: 168, g: 85, b: 247 }, // Violet
+  // Continuous physical spectral palette matching vgpu (Image #1)
+  const spectrumStops = [
+    { pos: 0.00, r: 255, g: 30, b: 50 },   // Deep Ruby Red (top)
+    { pos: 0.16, r: 255, g: 115, b: 0 },  // Solar Orange
+    { pos: 0.33, r: 255, g: 235, b: 0 },  // Golden Yellow
+    { pos: 0.50, r: 16, g: 232, b: 84 },  // Emerald Green
+    { pos: 0.67, r: 0, g: 229, b: 255 },  // Electric Cyan
+    { pos: 0.83, r: 41, g: 98, b: 255 },  // Royal Blue
+    { pos: 1.00, r: 124, g: 77, b: 255 }, // Violet (bottom)
   ];
+
+  // Helper to interpolate RGB along the continuous spectrum
+  function getSpectrumColor(t: number): { r: number; g: number; b: number } {
+    const clampedT = Math.max(0, Math.min(1, t));
+    for (let i = 0; i < spectrumStops.length - 1; i++) {
+      const s0 = spectrumStops[i];
+      const s1 = spectrumStops[i + 1];
+      if (clampedT >= s0.pos && clampedT <= s1.pos) {
+        const factor = (clampedT - s0.pos) / (s1.pos - s0.pos);
+        return {
+          r: Math.round(s0.r + (s1.r - s0.r) * factor),
+          g: Math.round(s0.g + (s1.g - s0.g) * factor),
+          b: Math.round(s0.b + (s1.b - s0.b) * factor),
+        };
+      }
+    }
+    return spectrumStops[spectrumStops.length - 1];
+  }
 
   onMount(() => {
     if (!canvasRef || !heroContainer) return;
@@ -52,8 +70,8 @@
     window.addEventListener('resize', resize);
 
     // Populate ambient particles
-    for (let i = 0; i < 60; i++) {
-      motes.push({
+    for (let i = 0; i < 50; i++) {
+      particles.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
         vx: (Math.random() - 0.5) * 0.2 - 0.08,
@@ -86,116 +104,249 @@
     heroContainer.addEventListener('mouseleave', handleMouseLeave);
     heroContainer.addEventListener('click', handleClick);
 
-    // Draw a single seamless transparent 3D glass prism
-    function drawGlassPrism(
+    // 1. Draw a Beveled 3D Glass Triangular Prism (Matching Image #1)
+    function drawBeveledGlassPrism(
       cx: number,
       cy: number,
       radius: number,
-      rotation: number,
-      tiltX: number,
-      tiltY: number,
-      internalGlowHue: number = 200
+      angle: number,
+      internalRay: { inX: number; inY: number; outX: number; outY: number } | null = null
     ) {
       if (!ctx) return;
       ctx.save();
-      ctx.translate(cx + tiltX * 8, cy + tiltY * 6);
-      ctx.rotate(rotation + tiltX * 0.04);
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
 
-      // Equilateral triangle vertices with chamfers
+      // Outer equilateral triangle vertices
       const r = radius;
-      const v1 = { x: 0, y: -r };
-      const v2 = { x: r * Math.cos(Math.PI / 6), y: r * Math.sin(Math.PI / 6) };
-      const v3 = { x: -r * Math.cos(Math.PI / 6), y: r * Math.sin(Math.PI / 6) };
+      const top = { x: 0, y: -r };
+      const right = { x: r * Math.cos(Math.PI / 6), y: r * Math.sin(Math.PI / 6) };
+      const left = { x: -r * Math.cos(Math.PI / 6), y: r * Math.sin(Math.PI / 6) };
 
-      // 1. Transparent Dielectric Glass Body Fill
-      const glassGrad = ctx.createLinearGradient(v1.x, v1.y, (v2.x + v3.x) / 2, (v2.y + v3.y) / 2);
-      glassGrad.addColorStop(0, 'rgba(18, 26, 45, 0.45)');
-      glassGrad.addColorStop(0.5, 'rgba(10, 16, 30, 0.35)');
-      glassGrad.addColorStop(1, 'rgba(25, 38, 65, 0.55)');
+      // Inner beveled facet frame
+      const bevelRatio = 0.78;
+      const itop = { x: top.x * bevelRatio, y: top.y * bevelRatio };
+      const iright = { x: right.x * bevelRatio, y: right.y * bevelRatio };
+      const ileft = { x: left.x * bevelRatio, y: left.y * bevelRatio };
 
+      // Base Glass Fill (Deep obsidian translucent dielectric glass)
       ctx.beginPath();
-      ctx.moveTo(v1.x, v1.y);
-      ctx.lineTo(v2.x, v2.y);
-      ctx.lineTo(v3.x, v3.y);
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.lineTo(left.x, left.y);
       ctx.closePath();
+
+      const glassGrad = ctx.createLinearGradient(left.x, top.y, right.x, right.y);
+      glassGrad.addColorStop(0, 'rgba(8, 12, 22, 0.92)');
+      glassGrad.addColorStop(0.5, 'rgba(14, 20, 36, 0.85)');
+      glassGrad.addColorStop(1, 'rgba(20, 28, 48, 0.90)');
       ctx.fillStyle = glassGrad;
       ctx.fill();
 
-      // 2. Internal Refraction Caustic Glow
-      const caustic = ctx.createRadialGradient(0, r * 0.1, 0, 0, r * 0.1, r * 0.85);
-      caustic.addColorStop(0, `hsla(${internalGlowHue}, 100%, 85%, ${0.25 + pulseEnergy * 0.4})`);
-      caustic.addColorStop(0.5, `hsla(${internalGlowHue}, 80%, 60%, ${0.08 + pulseEnergy * 0.2})`);
-      caustic.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = caustic;
+      // Chamfer Bevel Facets (3 Outer Bevel Strips)
+      // Right bevel facet
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.lineTo(iright.x, iright.y);
+      ctx.lineTo(itop.x, itop.y);
+      ctx.closePath();
+      const rBevel = ctx.createLinearGradient(itop.x, itop.y, right.x, right.y);
+      rBevel.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+      rBevel.addColorStop(0.5, 'rgba(160, 210, 255, 0.15)');
+      rBevel.addColorStop(1, 'rgba(60, 90, 140, 0.10)');
+      ctx.fillStyle = rBevel;
       ctx.fill();
 
-      // 3. Faceted Chamfer / Bevel Inner Lines (Giving 3D Glass Depth)
-      const innerScale = 0.82;
-      const iv1 = { x: v1.x * innerScale, y: v1.y * innerScale };
-      const iv2 = { x: v2.x * innerScale, y: v2.y * innerScale };
-      const iv3 = { x: v3.x * innerScale, y: v3.y * innerScale };
-
-      ctx.strokeStyle = 'rgba(180, 220, 255, 0.12)';
-      ctx.lineWidth = 1;
+      // Left bevel facet
       ctx.beginPath();
-      ctx.moveTo(iv1.x, iv1.y);
-      ctx.lineTo(iv2.x, iv2.y);
-      ctx.lineTo(iv3.x, iv3.y);
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(left.x, left.y);
+      ctx.lineTo(ileft.x, ileft.y);
+      ctx.lineTo(itop.x, itop.y);
+      ctx.closePath();
+      const lBevel = ctx.createLinearGradient(itop.x, itop.y, left.x, left.y);
+      lBevel.addColorStop(0, 'rgba(255, 255, 255, 0.25)');
+      lBevel.addColorStop(0.5, 'rgba(140, 190, 240, 0.12)');
+      lBevel.addColorStop(1, 'rgba(40, 70, 120, 0.08)');
+      ctx.fillStyle = lBevel;
+      ctx.fill();
+
+      // Bottom base bevel
+      ctx.beginPath();
+      ctx.moveTo(left.x, left.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.lineTo(iright.x, iright.y);
+      ctx.lineTo(ileft.x, ileft.y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(15, 25, 45, 0.35)';
+      ctx.fill();
+
+      // Internal Refracted Light Beam inside the Glass (White-Cyan Core with internal dispersion)
+      if (internalRay) {
+        // Convert global ray coords to local prism coords
+        const cosA = Math.cos(-angle);
+        const sinA = Math.sin(-angle);
+        const lx1 = (internalRay.inX - cx) * cosA - (internalRay.inY - cy) * sinA;
+        const ly1 = (internalRay.inX - cx) * sinA + (internalRay.inY - cy) * cosA;
+        const lx2 = (internalRay.outX - cx) * cosA - (internalRay.outY - cy) * sinA;
+        const ly2 = (internalRay.outX - cx) * sinA + (internalRay.outY - cy) * cosA;
+
+        // Internal beam core
+        const intBeamGrad = ctx.createLinearGradient(lx1, ly1, lx2, ly2);
+        intBeamGrad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+        intBeamGrad.addColorStop(0.5, 'rgba(200, 240, 255, 0.95)');
+        intBeamGrad.addColorStop(1, 'rgba(120, 210, 255, 0.90)');
+
+        ctx.strokeStyle = intBeamGrad;
+        ctx.lineWidth = 5.5 + pulseEnergy * 4.0;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 18 + pulseEnergy * 20;
+        ctx.beginPath();
+        ctx.moveTo(lx1, ly1);
+        ctx.lineTo(lx2, ly2);
+        ctx.stroke();
+
+        // Internal beam halo
+        ctx.strokeStyle = 'rgba(80, 180, 255, 0.35)';
+        ctx.lineWidth = 14 + pulseEnergy * 6.0;
+        ctx.stroke();
+      }
+
+      // 4. Polished Glass Specular Reflections (Studio Reflection on Bevels)
+      // Right entry edge specular line
+      const rightEdge = ctx.createLinearGradient(top.x, top.y, right.x, right.y);
+      rightEdge.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      rightEdge.addColorStop(0.3, 'rgba(220, 245, 255, 0.85)');
+      rightEdge.addColorStop(0.8, 'rgba(140, 190, 255, 0.3)');
+      rightEdge.addColorStop(1, 'rgba(80, 130, 200, 0.1)');
+      ctx.strokeStyle = rightEdge;
+      ctx.lineWidth = 2.4;
+      ctx.shadowColor = '#aaccff';
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(right.x, right.y);
+      ctx.stroke();
+
+      // Left exit edge specular line
+      const leftEdge = ctx.createLinearGradient(top.x, top.y, left.x, left.y);
+      leftEdge.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      leftEdge.addColorStop(0.35, 'rgba(200, 235, 255, 0.7)');
+      leftEdge.addColorStop(1, 'rgba(60, 110, 180, 0.2)');
+      ctx.strokeStyle = leftEdge;
+      ctx.lineWidth = 2.0;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(top.x, top.y);
+      ctx.lineTo(left.x, left.y);
+      ctx.stroke();
+
+      // Bottom base edge line
+      ctx.strokeStyle = 'rgba(140, 180, 230, 0.35)';
+      ctx.lineWidth = 1.4;
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.moveTo(right.x, right.y);
+      ctx.lineTo(left.x, left.y);
+      ctx.stroke();
+
+      // Inner bevel chamfer line
+      ctx.strokeStyle = 'rgba(200, 235, 255, 0.22)';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath();
+      ctx.moveTo(itop.x, itop.y);
+      ctx.lineTo(iright.x, iright.y);
+      ctx.lineTo(ileft.x, ileft.y);
       ctx.closePath();
       ctx.stroke();
 
-      // Corner bevel connectors
+      // Corner connector lines
       ctx.beginPath();
-      ctx.moveTo(v1.x, v1.y); ctx.lineTo(iv1.x, iv1.y);
-      ctx.moveTo(v2.x, v2.y); ctx.lineTo(iv2.x, iv2.y);
-      ctx.moveTo(v3.x, v3.y); ctx.lineTo(iv3.x, iv3.y);
+      ctx.moveTo(top.x, top.y); ctx.lineTo(itop.x, itop.y);
+      ctx.moveTo(right.x, right.y); ctx.lineTo(iright.x, iright.y);
+      ctx.moveTo(left.x, left.y); ctx.lineTo(ileft.x, ileft.y);
       ctx.stroke();
 
-      // 4. Polished Glass Specular Rim Glints (Vercel Studio Reflection Effect)
-      // Right entry edge highlight
-      const rGrad = ctx.createLinearGradient(v1.x, v1.y, v2.x, v2.y);
-      rGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-      rGrad.addColorStop(0.4, 'rgba(180, 225, 255, 0.75)');
-      rGrad.addColorStop(1, 'rgba(120, 180, 240, 0.3)');
-      ctx.strokeStyle = rGrad;
-      ctx.lineWidth = 2.2;
-      ctx.shadowColor = '#99ccff';
-      ctx.shadowBlur = 12;
-      ctx.beginPath();
-      ctx.moveTo(v1.x, v1.y);
-      ctx.lineTo(v2.x, v2.y);
-      ctx.stroke();
-
-      // Left exit edge highlight
-      const lGrad = ctx.createLinearGradient(v1.x, v1.y, v3.x, v3.y);
-      lGrad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
-      lGrad.addColorStop(0.5, 'rgba(200, 235, 255, 0.6)');
-      lGrad.addColorStop(1, 'rgba(100, 160, 230, 0.25)');
-      ctx.strokeStyle = lGrad;
-      ctx.lineWidth = 1.8;
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.moveTo(v1.x, v1.y);
-      ctx.lineTo(v3.x, v3.y);
-      ctx.stroke();
-
-      // Base edge subtle reflection
-      ctx.strokeStyle = 'rgba(120, 160, 210, 0.25)';
-      ctx.lineWidth = 1.2;
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.moveTo(v2.x, v2.y);
-      ctx.lineTo(v3.x, v3.y);
-      ctx.stroke();
-
-      // Apex Glint Flare
-      const apexGlint = ctx.createRadialGradient(v1.x, v1.y, 0, v1.x, v1.y, 14);
-      apexGlint.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-      apexGlint.addColorStop(0.5, 'rgba(180, 225, 255, 0.4)');
+      // Top Apex Specular Glint
+      const apexGlint = ctx.createRadialGradient(top.x, top.y, 0, top.x, top.y, 18);
+      apexGlint.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+      apexGlint.addColorStop(0.35, 'rgba(200, 235, 255, 0.5)');
       apexGlint.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = apexGlint;
       ctx.beginPath();
-      ctx.arc(v1.x, v1.y, 14, 0, Math.PI * 2);
+      ctx.arc(top.x, top.y, 18, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // 2. Draw Continuous Volumetric Rainbow Dispersion Ribbon (vgpu Style: Zero Gaps!)
+    function drawContinuousSpectralRibbon(
+      x0: number, y0: number, width0: number,
+      x1: number, y1: number, width1: number,
+      angle: number,
+      alphaMultiplier: number = 1.0
+    ) {
+      if (!ctx) return;
+      ctx.save();
+
+      // Normal vector perpendicular to the beam direction
+      const perpX = -Math.sin(angle);
+      const perpY = Math.cos(angle);
+
+      // We render a dense mesh of continuous slices (zero black gaps)
+      const slices = 48;
+      for (let s = 0; s < slices; s++) {
+        const t0 = s / slices;
+        const t1 = (s + 1.05) / slices; // Slightly overlapping to eliminate gaps
+
+        const col = getSpectrumColor(t0);
+
+        // Start segment points (at Prism exit)
+        const offset0_a = (t0 - 0.5) * width0;
+        const offset0_b = (t1 - 0.5) * width0;
+        const p0a = { x: x0 + perpX * offset0_a, y: y0 + perpY * offset0_a };
+        const p0b = { x: x0 + perpX * offset0_b, y: y0 + perpY * offset0_b };
+
+        // End segment points (at target)
+        const offset1_a = (t0 - 0.5) * width1;
+        const offset1_b = (t1 - 0.5) * width1;
+        const p1a = { x: x1 + perpX * offset1_a, y: y1 + perpY * offset1_a };
+        const p1b = { x: x1 + perpX * offset1_b, y: y1 + perpY * offset1_b };
+
+        // Quad slice
+        ctx.beginPath();
+        ctx.moveTo(p0a.x, p0a.y);
+        ctx.lineTo(p1a.x, p1a.y);
+        ctx.lineTo(p1b.x, p1b.y);
+        ctx.lineTo(p0b.x, p0b.y);
+        ctx.closePath();
+
+        const a = (0.92 + pulseEnergy * 0.35) * alphaMultiplier;
+        ctx.fillStyle = `rgba(${col.r}, ${col.g}, ${col.b}, ${a})`;
+        ctx.shadowColor = `rgba(${col.r}, ${col.g}, ${col.b}, 0.6)`;
+        ctx.shadowBlur = 8;
+        ctx.fill();
+      }
+
+      // Volumetric soft outer bloom covering the entire ribbon
+      const bloomGrad = ctx.createLinearGradient(
+        x0 - perpX * width0 * 0.6, y0 - perpY * width0 * 0.6,
+        x0 + perpX * width0 * 0.6, y0 + perpY * width0 * 0.6
+      );
+      bloomGrad.addColorStop(0, 'rgba(255, 30, 50, 0.15)');
+      bloomGrad.addColorStop(0.5, 'rgba(0, 230, 150, 0.18)');
+      bloomGrad.addColorStop(1, 'rgba(124, 77, 255, 0.15)');
+
+      ctx.beginPath();
+      ctx.moveTo(x0 - perpX * width0 * 0.6, y0 - perpY * width0 * 0.6);
+      ctx.lineTo(x1 - perpX * width1 * 0.6, y1 - perpY * width1 * 0.6);
+      ctx.lineTo(x1 + perpX * width1 * 0.6, y1 + perpY * width1 * 0.6);
+      ctx.lineTo(x0 + perpX * width0 * 0.6, y0 + perpY * width0 * 0.6);
+      ctx.closePath();
+      ctx.fillStyle = bloomGrad;
+      ctx.shadowBlur = 16;
       ctx.fill();
 
       ctx.restore();
@@ -204,7 +355,7 @@
     const render = () => {
       animId = requestAnimationFrame(render);
 
-      // Smooth mouse inertia
+      // Smooth inertia
       currentX += (targetX - currentX) * 0.045;
       currentY += (targetY - currentY) * 0.045;
 
@@ -221,7 +372,7 @@
       const h = canvas.height;
 
       // 1. Ambient Cosmic Dust Motes
-      for (const m of motes) {
+      for (const m of particles) {
         m.x += m.vx;
         m.y += m.vy;
         if (m.x < 0) m.x = w;
@@ -235,144 +386,141 @@
         ctx.fill();
       }
 
-      // 2. Optical Transmission Geometry Coordinates
-      // Prism 1 (Dispersing: Positioned Far Upper Right)
-      const p1X = w * 0.82 + currentX * 12;
+      // 2. Optical Coordinates & Geometries
+      // --- Prism 1 (Dispersing Prism: Positioned Upper Right) ---
+      const p1R = Math.min(w, h) * 0.21;
+      const p1X = w * 0.76 + currentX * 14;
       const p1Y = h * 0.35 + currentY * 10;
-      const p1Radius = Math.min(w, h) * 0.14;
+      const p1Angle = -0.06;
 
-      // Prism 2 (Receiving & Transmission: Positioned Lower Mid-Right, Well Spaced)
-      const p2X = w * 0.52 + currentX * 16;
-      const p2Y = h * 0.70 + currentY * 12;
-      const p2Radius = Math.min(w, h) * 0.13;
+      // --- Prism 2 (Receiving & Second Dispersion: Positioned Lower Center) ---
+      const p2R = Math.min(w, h) * 0.19;
+      const p2X = w * 0.44 + currentX * 18;
+      const p2Y = h * 0.72 + currentY * 12;
+      const p2Angle = 0.12;
 
-      // Ray entry & exit coordinates on prisms
-      const p1EntryX = p1X + p1Radius * 0.5;
-      const p1EntryY = p1Y - p1Radius * 0.1;
-      const p1ExitX = p1X - p1Radius * 0.5;
-      const p1ExitY = p1Y + p1Radius * 0.15;
+      // Incident ray entry into Prism 1 (on its right facet)
+      const p1EntryX = p1X + p1R * 0.42;
+      const p1EntryY = p1Y - p1R * 0.05;
 
-      const p2EntryX = p2X + p2Radius * 0.45;
-      const p2EntryY = p2Y - p2Radius * 0.15;
-      const p2ExitX = p2X - p2Radius * 0.5;
-      const p2ExitY = p2Y + p2Radius * 0.05;
+      // Exit from Prism 1 (on its left facet)
+      const p1ExitX = p1X - p1R * 0.45;
+      const p1ExitY = p1Y + p1R * 0.08;
+
+      // Rainbow arrival at Prism 2 (on its right facet)
+      const p2EntryX = p2X + p2R * 0.42;
+      const p2EntryY = p2Y - p2R * 0.08;
+
+      // Exit from Prism 2 (on its left facet)
+      const p2ExitX = p2X - p2R * 0.45;
+      const p2ExitY = p2Y + p2R * 0.06;
 
       ctx.save();
 
-      // --- A. INCIDENT WHITE LASER BEAM (From off-screen top-right into Prism 1) ---
+      // --- A. INCIDENT WHITE LASER BEAM (Shoots into Prism 1 from off-screen top-right) ---
       const incSourceX = w * 1.05;
-      const incSourceY = h * 0.08 + currentY * 20;
+      const incSourceY = h * 0.08 + currentY * 18;
 
       const incGrad = ctx.createLinearGradient(incSourceX, incSourceY, p1EntryX, p1EntryY);
-      incGrad.addColorStop(0, 'rgba(255, 255, 255, 0.92)');
+      incGrad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
       incGrad.addColorStop(1, 'rgba(240, 248, 255, 1.0)');
 
       ctx.strokeStyle = incGrad;
-      ctx.lineWidth = 3.5 + pulseEnergy * 4.0;
+      ctx.lineWidth = 4.5 + pulseEnergy * 4.0;
       ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 18 + pulseEnergy * 25;
+      ctx.shadowBlur = 20 + pulseEnergy * 25;
       ctx.beginPath();
       ctx.moveTo(incSourceX, incSourceY);
       ctx.lineTo(p1EntryX, p1EntryY);
       ctx.stroke();
 
-      // Prism 1 Entry Refraction Glint
-      const p1Glint = ctx.createRadialGradient(p1EntryX, p1EntryY, 0, p1EntryX, p1EntryY, 32 + pulseEnergy * 35);
-      p1Glint.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-      p1Glint.addColorStop(0.4, 'rgba(180, 225, 255, 0.4)');
-      p1Glint.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = p1Glint;
+      // Prism 1 Entry Caustic Flash
+      const p1EntryGlint = ctx.createRadialGradient(p1EntryX, p1EntryY, 0, p1EntryX, p1EntryY, 32 + pulseEnergy * 35);
+      p1EntryGlint.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+      p1EntryGlint.addColorStop(0.35, 'rgba(180, 230, 255, 0.5)');
+      p1EntryGlint.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = p1EntryGlint;
       ctx.beginPath();
       ctx.arc(p1EntryX, p1EntryY, 32 + pulseEnergy * 35, 0, Math.PI * 2);
       ctx.fill();
 
-      // Internal Caustic Beam in Prism 1
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.lineWidth = 4.0 + pulseEnergy * 3.5;
-      ctx.shadowBlur = 16;
+      // Fresnel Specular Reflection Ray (Bouncing off Prism 1 entry facet)
+      const reflX = p1EntryX + 180;
+      const reflY = p1EntryY - 140;
+      const reflGrad = ctx.createLinearGradient(p1EntryX, p1EntryY, reflX, reflY);
+      reflGrad.addColorStop(0, 'rgba(255, 255, 255, 0.75)');
+      reflGrad.addColorStop(1, 'rgba(180, 225, 255, 0.0)');
+      ctx.strokeStyle = reflGrad;
+      ctx.lineWidth = 2.2 + pulseEnergy * 2.0;
+      ctx.shadowColor = '#aaccff';
+      ctx.shadowBlur = 10;
       ctx.beginPath();
       ctx.moveTo(p1EntryX, p1EntryY);
-      ctx.lineTo(p1ExitX, p1ExitY);
+      ctx.lineTo(reflX, reflY);
       ctx.stroke();
 
-      // --- B. CONTINUOUS SPECTRAL RAINBOW TRANSMISSION (Prism 1 -> Prism 2) ---
-      // Fanning rainbow ribbon across the open diagonal space
-      const numBands = 24;
-      for (let b = 0; b < numBands; b++) {
-        const f = b / (numBands - 1); // 0 (Red) to 1 (Violet)
+      // --- B. STAGE 1 DISPERSION (Prism 1 -> Prism 2) ---
+      // Dense, continuous, gapless volumetric rainbow ribbon (vgpu Style!)
+      const dx12 = p2EntryX - p1ExitX;
+      const dy12 = p2EntryY - p1ExitY;
+      const angle12 = Math.atan2(dy12, dx12);
 
-        const startX = p1ExitX;
-        const startY = p1ExitY + (f - 0.5) * 16;
-        const endX = p2EntryX;
-        const endY = p2EntryY + (f - 0.5) * 48; // Expands gracefully across the gap
+      drawContinuousSpectralRibbon(
+        p1ExitX, p1ExitY, 26,             // Narrow at Prism 1 exit
+        p2EntryX, p2EntryY, 52,           // Fanning out across the gap to Prism 2
+        angle12,
+        1.0
+      );
 
-        // Spectral color blending
-        const cIdx = f * (spectralGradient.length - 1);
-        const i0 = Math.floor(cIdx);
-        const i1 = Math.min(spectralGradient.length - 1, i0 + 1);
-        const blend = cIdx - i0;
-        const cr = Math.round(spectralGradient[i0].r * (1 - blend) + spectralGradient[i1].r * blend);
-        const cg = Math.round(spectralGradient[i0].g * (1 - blend) + spectralGradient[i1].g * blend);
-        const cb = Math.round(spectralGradient[i0].b * (1 - blend) + spectralGradient[i1].b * blend);
-
-        const bandAlpha = 0.88 + pulseEnergy * 0.4;
-        ctx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, ${bandAlpha})`;
-        ctx.lineWidth = 3.2 + pulseEnergy * 2.8;
-        ctx.shadowColor = `rgba(${cr}, ${cg}, ${cb}, 0.85)`;
-        ctx.shadowBlur = 14 + pulseEnergy * 16;
-
-        ctx.beginPath();
-        ctx.moveTo(startX, startY);
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-      }
-
-      // Prism 2 Entry Multi-Spectral Caustic Burst
-      const p2Glint = ctx.createRadialGradient(p2EntryX, p2EntryY, 0, p2EntryX, p2EntryY, 42 + pulseEnergy * 45);
-      p2Glint.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
-      p2Glint.addColorStop(0.35, 'rgba(120, 220, 255, 0.45)');
-      p2Glint.addColorStop(0.7, 'rgba(255, 180, 100, 0.15)');
-      p2Glint.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = p2Glint;
+      // Prism 2 Entry Multi-Spectral Caustic Glow
+      const p2EntryGlint = ctx.createRadialGradient(p2EntryX, p2EntryY, 0, p2EntryX, p2EntryY, 40 + pulseEnergy * 45);
+      p2EntryGlint.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      p2EntryGlint.addColorStop(0.35, 'rgba(120, 220, 255, 0.5)');
+      p2EntryGlint.addColorStop(0.7, 'rgba(255, 180, 80, 0.2)');
+      p2EntryGlint.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = p2EntryGlint;
       ctx.beginPath();
-      ctx.arc(p2EntryX, p2EntryY, 42 + pulseEnergy * 45, 0, Math.PI * 2);
+      ctx.arc(p2EntryX, p2EntryY, 40 + pulseEnergy * 45, 0, Math.PI * 2);
       ctx.fill();
 
-      // Internal Refraction & Recombination in Prism 2
-      ctx.strokeStyle = 'rgba(220, 250, 255, 0.9)';
-      ctx.lineWidth = 4.5 + pulseEnergy * 4.0;
-      ctx.shadowBlur = 20;
+      // --- C. STAGE 2 DISPERSION: Secondary Physical Dispersion Exiting Prism 2 ---
+      // The light refracts further inside Prism 2 and disperses outward in an expansive rainbow fan across to the left!
+      const secAngle = Math.PI - 0.12 + currentY * 0.04;
+      const secLen = w * 0.56;
+      const secEndX = p2ExitX + Math.cos(secAngle) * secLen;
+      const secEndY = p2ExitY + Math.sin(secAngle) * secLen;
+
+      drawContinuousSpectralRibbon(
+        p2ExitX, p2ExitY, 32,             // Starts at Prism 2 exit facet
+        secEndX, secEndY, 135,            // Expands gracefully into a wide, luminous physical spectrum across the left!
+        secAngle,
+        0.95
+      );
+
+      // Prism 2 Exit Caustic Flare
+      const p2ExitGlint = ctx.createRadialGradient(p2ExitX, p2ExitY, 0, p2ExitX, p2ExitY, 34 + pulseEnergy * 35);
+      p2ExitGlint.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+      p2ExitGlint.addColorStop(0.4, 'rgba(0, 229, 255, 0.4)');
+      p2ExitGlint.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = p2ExitGlint;
       ctx.beginPath();
-      ctx.moveTo(p2EntryX, p2EntryY);
-      ctx.lineTo(p2ExitX, p2ExitY);
-      ctx.stroke();
-
-      // --- C. RECOMBINED TRANSMISSION EXIT BEAM (Shoots out to the left) ---
-      const exitEndX = -50;
-      const exitEndY = p2ExitY - 6;
-
-      const exitGrad = ctx.createLinearGradient(p2ExitX, p2ExitY, exitEndX, exitEndY);
-      exitGrad.addColorStop(0, 'rgba(255, 255, 255, 0.98)');
-      exitGrad.addColorStop(0.35, 'rgba(160, 230, 255, 0.9)');
-      exitGrad.addColorStop(1, 'rgba(100, 180, 255, 0.1)');
-
-      ctx.strokeStyle = exitGrad;
-      ctx.lineWidth = 4.2 + pulseEnergy * 4.0;
-      ctx.shadowColor = '#66ccff';
-      ctx.shadowBlur = 22 + pulseEnergy * 25;
-      ctx.beginPath();
-      ctx.moveTo(p2ExitX, p2ExitY);
-      ctx.lineTo(exitEndX, exitEndY);
-      ctx.stroke();
+      ctx.arc(p2ExitX, p2ExitY, 34 + pulseEnergy * 35, 0, Math.PI * 2);
+      ctx.fill();
 
       ctx.restore();
 
-      // 3. Render the Two Transparent 3D Glass Prisms
-      // Prism 1 (Dispersing Prism: Upper Right)
-      drawGlassPrism(p1X, p1Y, p1Radius, -0.15, currentX, currentY, 210);
+      // 3. Render Both Transparent 3D Beveled Glass Prisms (Matching Image #1)
+      // Prism 1 (Dispersing: Upper Right)
+      drawBeveledGlassPrism(
+        p1X, p1Y, p1R, p1Angle,
+        { inX: p1EntryX, inY: p1EntryY, outX: p1ExitX, outY: p1ExitY }
+      );
 
-      // Prism 2 (Receiving & Transmission Prism: Lower Mid-Right)
-      drawGlassPrism(p2X, p2Y, p2Radius, -0.08, currentX * 0.85, currentY * 0.85, 185);
+      // Prism 2 (Receiving & Secondary Dispersion: Lower Mid-Right)
+      drawBeveledGlassPrism(
+        p2X, p2Y, p2R, p2Angle,
+        { inX: p2EntryX, inY: p2EntryY, outX: p2ExitX, outY: p2ExitY }
+      );
     };
     render();
 
@@ -388,9 +536,9 @@
   bind:this={heroContainer}
   class="relative w-full h-[520px] sm:h-[580px] md:h-[640px] bg-black overflow-hidden select-none flex items-center cursor-crosshair"
   role="region"
-  aria-label="rakuyou's labyrinth dual-prism optical transmission hero"
+  aria-label="rakuyou's labyrinth dual-prism optical physical dispersion hero"
 >
-  <!-- Unified Real-time Optical Transmission Canvas: Zero image seams, crystal-clear transparency -->
+  <!-- Unified Real-time Optical Physics Canvas: Transparent Prisms & Continuous Wavelength Dispersion -->
   <canvas
     bind:this={canvasRef}
     class="absolute inset-0 w-full h-full pointer-events-none z-10"
