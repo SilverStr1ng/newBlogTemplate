@@ -1,0 +1,31 @@
+---
+title: "Spectral Prism — 实时光谱色散棱镜模拟器"
+description: "基于 WebGL 2.0 的实时物理光学仿真系统，模拟白光穿过透镜与棱镜时的柯西色散、内部全反射与焦散投影。"
+pubDate: 2026-09-02
+type: "Physical Optics Simulator"
+tech: ["WebGL2", "Three.js", "GLSL", "Svelte 5", "Math"]
+link: "https://example.com/spectral-prism"
+github: "https://github.com/example/spectral-prism"
+featured: true
+---
+
+import Callout from '../../components/mdx/Callout.svelte';
+
+**Spectral Prism** 是一个受牛顿三棱镜分光实验启发的交互式实时渲染项目。通过在片元着色器中建立可调节的物理介质几何体，用户可以自由旋转棱镜角度、改变入射角，并观察红、橙、黄、绿、青、蓝、紫连续光谱在焦平面上的色散扩散。
+
+## 技术实现关键点
+
+1. **柯西色散公式计算**：
+   公式定义：`n(λ) = A + B / (λ^2)`
+   根据入射光束的虚拟波长 `λ`，精确计算不同频段光子在穿出介质表面时的折射角。
+
+2. **多通道色散合成**：
+   将传统 3 通道（RGB）扩展为 7 通道高保真光谱拟合，避免单一 RGB 分色产生的色带伪影。
+
+<Callout type="optics" title="内部全反射（TIR）">
+当光线从高折射率介质（如重火石玻璃，n ≈ 1.66）射向空气且入射角大于临界角时，所有能量被完全反射，形成纯净的内部光波反射图样。
+</Callout>
+
+## 架构设计
+
+项目采用 Svelte 5 的细粒度状态调度 UI 控制面板，与 WebGL 渲染上下文通过 Float32Array 缓冲区实现无垃圾回收（Zero-GC）的数据流传递。

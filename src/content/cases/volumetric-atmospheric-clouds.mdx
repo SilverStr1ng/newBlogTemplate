@@ -1,0 +1,23 @@
+---
+title: "AeroGpu — WebGPU 实时体积云与大气散射"
+description: "利用 WebGPU 计算着色器与 3D Perlin-Worley 噪声纹理，实现端到端 120 FPS 的光线步进体积云与米氏散射渲染。"
+pubDate: 2026-08-20
+type: "WebGPU Volumetric Engine"
+tech: ["WebGPU", "WGSL", "Raymarching", "Volumetric Light"]
+link: "https://example.com/aerogpu"
+github: "https://github.com/example/aerogpu"
+featured: true
+---
+
+import Callout from '../../components/mdx/Callout.svelte';
+
+AeroGpu 探索了新一代 Web 图形标准 WebGPU 在体积渲染领域的极致潜能。通过脱离传统的光栅化网格限制，直接在三维空间中对光线与微小水滴/气体分子的相互作用进行步进积分。
+
+## 核心算法
+
+- **Rayleight 与 Mie 散射组合**：模拟黄昏与正午不同太阳高度角下的天空颜色与光晕。
+- **动态步长光线步进（Raymarching with Early Exit）**：在透射率接近 0 或离开包围盒时提前退出计算，节省多达 40% 的着色核心耗时。
+
+<Callout type="warning" title="硬件支持与降级">
+该案例优先请求 WebGPU 设备上下文，对于不支持 WebGPU 的浏览器（如部分老旧移动设备），自动无缝降级为基于 WebGL2 简化的 2D 拟真图层。
+</Callout>

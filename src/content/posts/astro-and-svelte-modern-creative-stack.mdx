@@ -1,0 +1,35 @@
+---
+title: "孤岛架构与响应式 Runes：用 Astro 5 和 Svelte 5 搭建图形博客"
+description: "为什么说 Astro 的静态孤岛与 Svelte 5 的零虚拟 DOM 是做技术博客与着色器交互展示的终极组合？"
+pubDate: 2026-08-15
+tags: ["Astro", "Svelte", "Architecture", "Engineering"]
+featured: false
+readTime: "6 min read"
+---
+
+import Callout from '../../components/mdx/Callout.svelte';
+
+在构建重度依赖三维渲染和交互式 Canvas 的技术博客时，开发者往往面临两难：
+- 传统的 SPA（单页面应用）首屏巨大，JS 运行时过重，SEO 不佳。
+- 纯纯静态生成器（SSG）则缺乏与现代前端响应式组件库的无缝集成体验。
+
+## 孤岛架构的解法
+
+Astro 的 **Islands Architecture（孤岛架构）** 将页面整体编译为极速的纯 HTML，仅对真正需要客户端执行的组件（例如 Hero Banner、交互式 Shader 演示、滤镜控制器）进行针对性注水（Hydration）：
+
+```astro
+<!-- 默认 0 客户端 JS，极速首屏 -->
+<Navbar />
+
+<!-- 只有 Hero 在客户端激活 WebGL/WebGPU -->
+<LightHero client:load />
+
+<!-- 只有滚动到可视区域才加载着色器控件 -->
+<ShaderDemo client:visible />
+```
+
+<Callout type="tip" title="Svelte 5 Runes 的轻量化优势">
+Svelte 5 引入的 `$state` 和 `$derived` runes 在编译后产生极小且极其精准的响应式代码，没有任何庞大的 Virtual DOM 树比对开销，这对需要保持 60fps / 120fps 渲染循环的图形场景极为友好。
+</Callout>
+
+这种组合保证了极速的内容阅读体验，同时赋予每一篇技术文章内嵌高级视觉交互的可能。

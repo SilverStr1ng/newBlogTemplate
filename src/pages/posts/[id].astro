@@ -1,0 +1,116 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getCollection, render } from 'astro:content';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('posts');
+  return posts.map((post) => ({
+    params: { id: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content, headings } = await render(post);
+
+const allPosts = await getCollection('posts');
+const sortedPosts = allPosts
+  .filter((p) => !p.data.draft)
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+
+const currentIndex = sortedPosts.findIndex((p) => p.id === post.id);
+const prevPost = currentIndex < sortedPosts.length - 1 ? sortedPosts[currentIndex + 1] : null;
+const nextPost = currentIndex > 0 ? sortedPosts[currentIndex - 1] : null;
+
+const formattedDate = new Intl.DateTimeFormat('zh-CN', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+}).format(post.data.pubDate);
+---
+
+<Layout
+  title={`${post.data.title} — vGPU::Light`}
+  description={post.data.description}
+>
+  <article class="max-w-4xl mx-auto px-6 py-12 md:py-16">
+    <!-- Breadcrumb / Back link -->
+    <div class="mb-8">
+      <a
+        href="/posts"
+        class="inline-flex items-center gap-1.5 text-xs font-mono text-slate-400 hover:text-sky-400 transition-colors"
+      >
+        <span>←</span>
+        <span>返回文章列表</span>
+      </a>
+    </div>
+
+    <!-- Article Header -->
+    <header class="mb-12 pb-8 border-b border-slate-800">
+      <div class="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-400 mb-4">
+        <time datetime={post.data.pubDate.toISOString()}>{formattedDate}</time>
+        <span class="text-slate-700">•</span>
+        <span>{post.data.readTime || '5 min read'}</span>
+        {post.data.featured && (
+          <>
+            <span class="text-slate-700">•</span>
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              FEATURED
+            </span>
+          </>
+        )}
+      </div>
+
+      <h1 class="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-white leading-[1.18]">
+        {post.data.title}
+      </h1>
+
+      <p class="mt-5 text-base sm:text-lg text-slate-300 leading-relaxed">
+        {post.data.description}
+      </p>
+
+      <!-- Tags -->
+      <div class="mt-6 flex flex-wrap items-center gap-2">
+        {post.data.tags.map((tag) => (
+          <span class="text-xs font-mono text-sky-300 bg-sky-500/10 border border-sky-500/20 px-2.5 py-1 rounded-md">
+            #{tag}
+          </span>
+        ))}
+      </div>
+    </header>
+
+    <!-- MDX Article Body -->
+    <div class="prose prose-invert prose-slate max-w-none prose-headings:scroll-mt-24 prose-headings:font-bold prose-headings:text-slate-100 prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-4 prose-h3:text-xl prose-p:text-slate-300 prose-p:leading-relaxed prose-p:my-4 prose-code:text-sky-300 prose-code:bg-slate-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800 prose-pre:rounded-2xl prose-li:text-slate-300">
+      <Content />
+    </div>
+
+    <!-- Navigation between posts -->
+    <nav class="mt-16 pt-8 border-t border-slate-800/80 grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {prevPost ? (
+        <a
+          href={`/posts/${prevPost.id}`}
+          class="group p-5 rounded-2xl border border-slate-800/80 bg-slate-900/40 hover:bg-slate-900/80 hover:border-slate-700 transition-all flex flex-col"
+        >
+          <span class="text-xs font-mono text-slate-500 mb-1">← 上一篇</span>
+          <span class="text-sm font-semibold text-slate-200 group-hover:text-sky-400 transition-colors line-clamp-1">
+            {prevPost.data.title}
+          </span>
+        </a>
+      ) : (
+        <div></div>
+      )}
+
+      {nextPost && (
+        <a
+          href={`/posts/${nextPost.id}`}
+          class="group p-5 rounded-2xl border border-slate-800/80 bg-slate-900/40 hover:bg-slate-900/80 hover:border-slate-700 transition-all flex flex-col sm:text-right"
+        >
+          <span class="text-xs font-mono text-slate-500 mb-1">下一篇 →</span>
+          <span class="text-sm font-semibold text-slate-200 group-hover:text-sky-400 transition-colors line-clamp-1">
+            {nextPost.data.title}
+          </span>
+        </a>
+      )}
+    </nav>
+  </article>
+</Layout>

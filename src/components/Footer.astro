@@ -1,0 +1,22 @@
+---
+const currentYear = new Date().getFullYear();
+---
+
+<footer class="w-full border-t border-slate-900 bg-slate-950/60 py-12 text-slate-500 text-xs font-mono">
+  <div class="max-w-5xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+    <div class="flex items-center gap-3">
+      <div class="w-2 h-2 rounded-full bg-sky-400/80 shadow-[0_0_8px_#38bdf8]"></div>
+      <span>vGPU Studio • Inspired by Maxime Heckel Optics</span>
+    </div>
+
+    <div class="flex items-center gap-6">
+      <a href="/posts" class="hover:text-slate-300 transition-colors">ARTICLES</a>
+      <a href="/cases" class="hover:text-slate-300 transition-colors">CASES</a>
+      <a href="#top" class="hover:text-sky-400 transition-colors">BACK TO TOP ↑</a>
+    </div>
+
+    <div class="text-slate-600">
+      © {currentYear} • BUILT WITH ASTRO 5 + SVELTE 5
+    </div>
+  </div>
+</footer>

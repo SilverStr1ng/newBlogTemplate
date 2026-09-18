@@ -1,0 +1,45 @@
+---
+title: "WebGPU 计算着色器入门：用 WGSL 打造大规模粒子光场"
+description: "告别 WebGL 顶点瓶颈，深入解析 WebGPU 管道架构、计算着色器绑定组（BindGroups）与并行光线步进。"
+pubDate: 2026-08-28
+tags: ["WebGPU", "WGSL", "Compute Shader", "Graphics"]
+featured: true
+readTime: "10 min read"
+---
+
+import Callout from '../../components/mdx/Callout.svelte';
+
+WebGPU 是现代 Web 图形学领域最激进的演进。与传统的 WebGL 状态机模型不同，WebGPU 直接暴露底层现代图形 API（Vulkan, Metal, DirectX 12）的显式控制权。
+
+其中，最令人兴奋的能力莫过于**计算着色器（Compute Shader）**。无需通过光栅化管线渲染假几何体，我们可以直接在 GPU 核心上执行通用的并行计算。
+
+<Callout type="info" title="WebGPU vs WebGL2">
+在 WebGL2 中，想要更新 50 万个受光场力作用的粒子，通常需要借助复杂且调试困难的 Transform Feedback 或离屏浮点纹理（GPGPU ping-pong）。而在 WebGPU 中，仅需一个 `workgroup` 线程调度即可并行完成。
+</Callout>
+
+## WGSL 计算管线声明
+
+以下是一个典型的 WGSL 计算着色器结构：
+
+```wgsl
+struct Particle {
+  position : vec3<f32>,
+  velocity : vec3<f32>,
+  color : vec4<f32>,
+};
+
+@group(0) @binding(0) var<storage, read_write> particles : array<Particle>;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) global_id : vec3<u32>) {
+  let index = global_id.x;
+  if (index >= arrayLength(&particles)) {
+    return;
+  }
+  
+  // 基于空间光强梯度更新粒子速度
+  particles[index].position += particles[index].velocity * 0.016;
+}
+```
+
+配合 Astro 5 的服务端渲染与 Svelte 5 的响应式封装，可以在浏览器瞬间唤醒 GPU 的原始算力。

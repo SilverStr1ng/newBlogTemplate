@@ -1,0 +1,19 @@
+---
+title: "LumenField — 实时神经光场重建探索"
+description: "结合小型神经网络模型与实时光场重构技术，在客户端浏览器实现超高帧率的新视角合成与复杂高光反射。"
+pubDate: 2026-07-29
+type: "Interactive 3D Experiment"
+tech: ["WebGPU", "WGSL", "ONNX Web", "NeRF", "Three.js"]
+link: "https://example.com/lumenfield"
+github: "https://github.com/example/lumenfield"
+featured: false
+---
+
+import Callout from '../../components/mdx/Callout.svelte';
+
+LumenField 是一个轻量级光场浏览器试验平台。利用轻量级 MLP（多层感知机）权重编码场景的 Radiance Field，并将其转化为着色器中高速采样的紧凑数据结构。
+
+## 关键成果
+
+- 实现了纯前端无需服务器 GPU 推理的 60 FPS 自由视角漫游。
+- 重建了具有复杂各向异性（Anisotropic）高光与次表面散射质感的透明水晶模型。
