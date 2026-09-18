@@ -1,5 +1,5 @@
 <script lang="ts">
-  import FilterBar from './FilterBar.svelte';
+  import { Search, X, Hash } from '@lucide/svelte';
 
   interface PostItem {
     id: string;
@@ -8,7 +8,6 @@
     pubDate: string;
     tags: string[];
     readTime?: string;
-    featured?: boolean;
   }
 
   interface Props {
@@ -28,100 +27,87 @@
       const matchSearch =
         !q ||
         p.title.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
         p.tags.some((t) => t.toLowerCase().includes(q));
       return matchTag && matchSearch;
     })
   );
 
   function formatDate(iso: string) {
-    return new Intl.DateTimeFormat('zh-CN', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    }).format(new Date(iso));
+    return iso.slice(0, 10).replace(/-/g, '.');
   }
 </script>
 
-<div>
-  <!-- Search and Tag filter -->
-  <FilterBar
-    {allTags}
-    {selectedTag}
-    onSelectTag={(t) => (selectedTag = t)}
-    onSearch={(q) => (searchQuery = q)}
-  />
+<div class="space-y-6">
+  <!-- Minimal Search & Tags Row -->
+  <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+    <div class="relative flex-1 max-w-xs">
+      <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+      <input
+        type="text"
+        placeholder="搜索文章..."
+        bind:value={searchQuery}
+        class="w-full pl-8 pr-7 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 transition-colors font-mono"
+      />
+      {#if searchQuery}
+        <button
+          onclick={() => (searchQuery = '')}
+          class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+        >
+          <X class="w-3 h-3" />
+        </button>
+      {/if}
+    </div>
 
-  <!-- Results Count -->
-  <div class="mb-6 flex items-center justify-between text-xs font-mono text-slate-500">
-    <span>FOUND {filteredPosts.length} ARTICLE{filteredPosts.length === 1 ? '' : 'S'}</span>
-    {#if selectedTag || searchQuery}
-      <button
-        onclick={() => {
-          selectedTag = '';
-          searchQuery = '';
-        }}
-        class="text-sky-400 hover:underline cursor-pointer"
-      >
-        RESET FILTERS
-      </button>
-    {/if}
+    <!-- Tags -->
+    <div class="flex flex-wrap items-center gap-1 text-xs font-mono">
+      {#each allTags as tag}
+        <button
+          onclick={() => (selectedTag = selectedTag === tag ? '' : tag)}
+          class={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+            selectedTag === tag
+              ? 'bg-sky-500 text-slate-950 font-semibold'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+          }`}
+        >
+          #{tag}
+        </button>
+      {/each}
+    </div>
   </div>
 
-  <!-- Posts Grid -->
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+  <!-- Minimal List -->
+  <div class="divide-y divide-slate-900/90">
     {#each filteredPosts as post (post.id)}
-      <article class="group relative rounded-2xl border border-slate-800/80 bg-slate-900/40 hover:bg-slate-900/80 p-6 transition-all duration-300 hover:border-slate-700 hover:shadow-[0_4px_30px_rgba(0,0,0,0.5)] flex flex-col justify-between">
-        <div class="absolute inset-0 rounded-2xl bg-gradient-to-br from-sky-500/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-
-        <div class="relative z-10">
-          <!-- Meta row -->
-          <div class="flex flex-wrap items-center gap-3 text-xs font-mono text-slate-400 mb-3">
-            <time>{formatDate(post.pubDate)}</time>
-            <span class="text-slate-700">•</span>
-            <span>{post.readTime || '5 min read'}</span>
-            {#if post.featured}
-              <span class="text-slate-700">•</span>
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
-                FEATURED
-              </span>
-            {/if}
-          </div>
-
-          <!-- Title -->
-          <h3 class="text-xl font-bold text-slate-100 group-hover:text-sky-300 transition-colors leading-snug">
-            <a href={`/posts/${post.id}`}>
-              {post.title}
-            </a>
-          </h3>
-
-          <!-- Description -->
-          <p class="mt-2.5 text-sm text-slate-400 line-clamp-2 leading-relaxed">
-            {post.description}
-          </p>
+      <a
+        href={`/posts/${post.id}`}
+        class="group flex items-baseline justify-between gap-4 py-3.5 hover:border-slate-800 transition-colors"
+      >
+        <div class="flex items-baseline gap-4 sm:gap-6 min-w-0">
+          <time class="text-xs font-mono text-slate-400 shrink-0 select-none">
+            {formatDate(post.pubDate)}
+          </time>
+          <span class="text-sm sm:text-base text-slate-300 font-normal group-hover:text-sky-300 transition-colors truncate">
+            {post.title}
+          </span>
         </div>
 
-        <!-- Tags -->
-        <div class="relative z-10 mt-6 pt-4 border-t border-slate-800/50 flex flex-wrap items-center gap-1.5">
-          {#each post.tags as tag}
-            <button
-              onclick={(e) => {
-                e.stopPropagation();
-                selectedTag = tag;
-              }}
-              class="text-[11px] font-mono text-slate-400 bg-slate-800/60 hover:bg-slate-800 hover:text-sky-300 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
-            >
-              #{tag}
-            </button>
-          {/each}
+        <div class="flex items-center gap-3 shrink-0 text-xs font-mono text-slate-400">
+          {#if post.tags[0]}
+            <span class="hidden sm:inline text-slate-400">
+              #{post.tags[0]}
+            </span>
+          {/if}
+          <span class="text-slate-400">
+            {post.readTime || '5 min'}
+          </span>
         </div>
-      </article>
+      </a>
     {/each}
   </div>
 
   {#if filteredPosts.length === 0}
-    <div class="py-16 text-center text-slate-500 font-mono text-sm border border-dashed border-slate-800 rounded-2xl">
-      NO MATCHING ARTICLES FOUND. TRY CLEARING FILTERS.
+    <div class="py-12 text-center text-slate-600 font-mono text-xs">
+      未找到匹配文章
     </div>
   {/if}
 </div>

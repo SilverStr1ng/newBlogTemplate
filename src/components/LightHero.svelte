@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as THREE from 'three';
-  import { Sparkles, Cpu, Layers } from '@lucide/svelte';
 
   let canvasContainer: HTMLDivElement | null = null;
   let renderer: THREE.WebGLRenderer | null = null;
@@ -10,15 +9,10 @@
   let material: THREE.ShaderMaterial | null = null;
   let animationFrameId: number = 0;
 
-  let gpuStatus = $state('Detecting GPU...');
-  let fps = $state(60);
-  let isHovered = $state(false);
-
-  // Mouse state with smooth dampening (lerp)
+  // Smooth mouse coordinates (lerp)
   const targetMouse = { x: 0.5, y: 0.5 };
   const currentMouse = { x: 0.5, y: 0.5 };
 
-  // GLSL Vertex Shader
   const vertexShader = `
     varying vec2 vUv;
     void main() {
@@ -27,136 +21,138 @@
     }
   `;
 
-  // GLSL Fragment Shader: Volumetric Light, Caustics & Chromatic Dispersion
+  // Optical Light Prism Shader: Incident White Ray -> Glass Triangle -> Spectral Dispersion (Rainbow Fan)
   const fragmentShader = `
     uniform float uTime;
     uniform vec2 uResolution;
     uniform vec2 uMouse;
     varying vec2 vUv;
 
-    // Simplex-like noise & domain warping for organic caustics
-    vec3 hash33(vec3 p) {
-      p = fract(p * vec3(443.897, 441.423, 437.195));
-      p += dot(p, p.yxz + 19.19);
-      return -1.0 + 2.0 * fract((p.xxy + p.yxx) * p.zyx);
+    // Equilateral triangle distance function
+    float sdTriangleIsosceles(in vec2 p, in vec2 q) {
+      p.x = abs(p.x);
+      vec2 a = p - q * clamp(dot(p, q) / dot(q, q), 0.0, 1.0);
+      vec2 b = p - q * vec2(clamp(p.x / q.x, 0.0, 1.0), 1.0);
+      float k = sign(q.y);
+      float d = min(dot(a, a), dot(b, b));
+      float s = max(k * (p.x * q.y - p.y * q.x), k * (p.y - q.y));
+      return sqrt(d) * sign(s);
     }
 
-    float noise(vec3 p) {
-      vec3 i = floor(p);
-      vec3 f = fract(p);
-      vec3 u = f * f * (3.0 - 2.0 * f);
-      return mix(mix(mix(dot(hash33(i + vec3(0,0,0)), f - vec3(0,0,0)),
-                         dot(hash33(i + vec3(1,0,0)), f - vec3(1,0,0)), u.x),
-                     mix(dot(hash33(i + vec3(0,1,0)), f - vec3(0,1,0)),
-                         dot(hash33(i + vec3(1,1,0)), f - vec3(1,1,0)), u.x), u.y),
-                 mix(mix(dot(hash33(i + vec3(0,0,1)), f - vec3(0,0,1)),
-                         dot(hash33(i + vec3(1,0,1)), f - vec3(1,0,1)), u.x),
-                     mix(dot(hash33(i + vec3(0,1,1)), f - vec3(0,1,1)),
-                         dot(hash33(i + vec3(1,1,1)), f - vec3(1,1,1)), u.x), u.y), u.z);
+    // Gaussian beam intensity along a 2D line segment
+    float beamSegment(vec2 p, vec2 a, vec2 b, float thickness) {
+      vec2 pa = p - a;
+      vec2 ba = b - a;
+      float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+      float d = length(pa - ba * h);
+      return exp(-d * d / (thickness * thickness));
     }
 
-    // Caustic function using overlapping sine waves and domain warping
-    float causticPattern(vec2 uv, float time, float offset) {
-      vec2 p = uv * 3.5;
-      for (int i = 1; i < 5; i++) {
-        float fi = float(i);
-        p += vec2(
-          sin(p.y * 1.5 + time * 0.4 + offset) * 0.4,
-          cos(p.x * 1.5 + time * 0.35 + offset) * 0.4
-        );
-      }
-      float c = sin(p.x + p.y) * cos(p.x - p.y);
-      return abs(c);
+    // Convert wavelength (normalized 0.0 - 1.0, approx 400nm to 700nm) to RGB spectral color
+    vec3 spectralColor(float t) {
+      // Smooth approximation of visible spectrum (violet -> blue -> cyan -> green -> yellow -> red)
+      float r = smoothstep(0.5, 0.8, t) + (1.0 - smoothstep(0.0, 0.25, t)) * 0.4;
+      float g = sin(clamp(t * 3.1415, 0.0, 3.1415));
+      float b = 1.0 - smoothstep(0.2, 0.65, t);
+      // Boost vividness and balance
+      vec3 c = vec3(r, g * 0.95, b);
+      c += vec3(0.15, 0.25, 0.4) * (1.0 - abs(t - 0.3) * 3.0);
+      return max(c, vec3(0.0));
     }
 
     void main() {
       vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.x, uResolution.y);
       vec2 st = gl_FragCoord.xy / uResolution.xy;
 
-      // Mouse influence as a dynamic light refraction center
-      vec2 m = (uMouse - 0.5) * 1.4;
-      float distToMouse = length(uv - m);
+      // Mouse interactive tilt and position
+      vec2 m = (uMouse - 0.5) * 0.8;
+      float time = uTime * 0.5;
 
-      float t = uTime * 0.35;
+      // Prism geometry (Equilateral glass prism centered slightly to the left)
+      vec2 prismCenter = vec2(-0.18, -0.02);
+      vec2 pTri = uv - prismCenter;
+      // Invert Y for triangle apex pointing up
+      pTri.y = -pTri.y;
+      float prismDist = sdTriangleIsosceles(pTri + vec2(0.0, 0.16), vec2(0.32, 0.48));
 
-      // Subtle volumetric light beam radiating from top-center towards mouse
-      vec2 lightOrigin = vec2(0.0, 0.85) + m * 0.3;
-      vec2 lightRay = uv - lightOrigin;
-      float rayAngle = atan(lightRay.y, lightRay.x);
-      float rayDist = length(lightRay);
-      
-      float beams = sin(rayAngle * 9.0 + t * 0.6) * 0.5 + 0.5;
-      beams += sin(rayAngle * 17.0 - t * 0.4) * 0.25;
-      beams *= exp(-rayDist * 1.4);
+      // Light Origin (Left side, controlled by mouse Y)
+      vec2 incidentStart = vec2(-0.85, 0.22 + m.y * 0.45);
+      vec2 incidentHit = prismCenter + vec2(-0.15, 0.02 + m.y * 0.08);
 
-      // Chromatic Dispersion (Prism effect: R, G, B wavelength separation)
-      float dispersion = 0.045 + (1.0 - smoothstep(0.0, 0.8, distToMouse)) * 0.06;
-      
-      float r = causticPattern(uv + vec2(dispersion * 0.9, 0.0), t, 0.0);
-      float g = causticPattern(uv, t, 0.8);
-      float b = causticPattern(uv - vec2(dispersion * 1.1, 0.0), t, 1.6);
+      // 1. Incident White Beam
+      float incident = beamSegment(uv, incidentStart, incidentHit, 0.016);
+      incident += beamSegment(uv, incidentStart, incidentHit, 0.06) * 0.4;
+      vec3 col = vec3(0.95, 0.98, 1.0) * incident * 2.2;
 
-      // Combine caustics with high contrast power
-      r = pow(r, 4.0);
-      g = pow(g, 4.0);
-      b = pow(b, 4.0);
+      // 2. Internal Refraction inside Prism
+      vec2 internalExit = prismCenter + vec2(0.14, -0.05 + m.y * 0.04);
+      if (prismDist < 0.0) {
+        float internalBeam = beamSegment(uv, incidentHit, internalExit, 0.022);
+        internalBeam += beamSegment(uv, incidentHit, internalExit, 0.07) * 0.5;
+        col += vec3(0.9, 0.95, 1.0) * internalBeam * 1.8;
 
-      // Color grading: Deep Indigo, Electric Cyan, Amethyst Violet, Solar Amber
-      vec3 colR = vec3(0.95, 0.32, 0.55) * r * 1.4;
-      vec3 colG = vec3(0.22, 0.85, 0.98) * g * 1.5;
-      vec3 colB = vec3(0.58, 0.35, 1.00) * b * 1.8;
+        // Glass volume subtle caustics/glow
+        col += vec3(0.2, 0.4, 0.7) * (1.0 - smoothstep(-0.15, 0.0, prismDist)) * 0.25;
+      }
 
-      vec3 finalColor = colR + colG + colB;
+      // 3. Prism Glass Edges & Internal Reflection
+      float edge = 1.0 - smoothstep(0.0, 0.014, abs(prismDist));
+      col += vec3(0.6, 0.8, 1.0) * edge * 0.85;
 
-      // Add volumetric light beams with subtle amber/gold tint
-      finalColor += vec3(0.9, 0.75, 1.0) * beams * 0.55;
+      // Weak Fresnel Reflection Beam off the entry face
+      vec2 reflectDir = normalize(incidentHit - incidentStart);
+      reflectDir.y = -reflectDir.y * 0.85;
+      vec2 reflectEnd = incidentHit + reflectDir * 0.5;
+      float reflection = beamSegment(uv, incidentHit, reflectEnd, 0.015);
+      col += vec3(0.7, 0.85, 1.0) * reflection * 0.25;
 
-      // Light core focus around cursor
-      float core = exp(-distToMouse * 4.0) * 0.85;
-      finalColor += vec3(0.6, 0.9, 1.0) * core;
+      // 4. Dispersion: Fan of Spectral Beams (Rainbow Rays) exiting the right face
+      const int SAMPLES = 18;
+      for (int i = 0; i < SAMPLES; i++) {
+        float f = float(i) / float(SAMPLES - 1);
+        // Dispersion angle spreading based on wavelength
+        float fanAngle = -0.18 + f * 0.48 + m.y * 0.2;
+        vec2 dir = vec2(cos(fanAngle), sin(fanAngle));
+        vec2 rayEnd = internalExit + dir * 1.4;
 
-      // Ambient background gradient (Dark obsidian space)
-      vec3 bg = mix(
-        vec3(0.035, 0.040, 0.065),
-        vec3(0.015, 0.018, 0.028),
-        st.y
-      );
+        // Spectral color for this wavelength
+        vec3 rayColor = spectralColor(1.0 - f);
 
-      finalColor = mix(bg, finalColor + bg, 0.75);
+        // Core thin beam + volumetric glow
+        float ray = beamSegment(uv, internalExit, rayEnd, 0.012 + f * 0.008);
+        float rayGlow = beamSegment(uv, internalExit, rayEnd, 0.055 + f * 0.02) * 0.35;
+
+        // Distance attenuation from exit
+        float distFactor = clamp(uv.x - internalExit.x, 0.0, 1.0);
+        col += rayColor * (ray * 1.6 + rayGlow) * (0.8 + distFactor * 0.4);
+      }
+
+      // Subtle ambient particle dust in the beam
+      float dust = sin(uv.x * 40.0 + time) * cos(uv.y * 40.0 - time);
+      col += vec3(0.8, 0.9, 1.0) * max(0.0, dust) * 0.04 * step(internalExit.x, uv.x);
+
+      // Deep obsidian space background
+      vec3 bg = vec3(0.031, 0.035, 0.051);
+      col = max(col, bg);
 
       // Bottom fade out into solid page background (#08090d)
-      float bottomFade = smoothstep(0.0, 0.45, st.y);
-      finalColor = mix(vec3(0.031, 0.035, 0.051), finalColor, bottomFade);
+      float bottomFade = smoothstep(0.0, 0.35, st.y);
+      col = mix(bg, col, bottomFade);
 
-      // Subtle vignette
-      float vignette = 1.0 - length(st - 0.5) * 0.6;
-      finalColor *= clamp(vignette, 0.0, 1.0);
+      // Top subtle fade
+      float topFade = smoothstep(1.0, 0.85, st.y);
+      col = mix(bg, col, topFade);
 
-      gl_FragColor = vec4(finalColor, 1.0);
+      gl_FragColor = vec4(col, 1.0);
     }
   `;
 
   onMount(() => {
     if (!canvasContainer) return;
 
-    // Detect GPU & context
-    try {
-      const gl = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
-      if (gl) {
-        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-        const gpuName = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'Hardware Accelerated';
-        gpuStatus = gpuName.includes('NVIDIA') ? 'RTX vGPU • GLSL' : gpuName.split('/')[0].slice(0, 24);
-      } else {
-        gpuStatus = 'Software Rasterizer';
-      }
-    } catch {
-      gpuStatus = 'WebGL2 Active';
-    }
-
     const width = canvasContainer.clientWidth;
     const height = canvasContainer.clientHeight;
 
-    // Three.js setup
     renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
@@ -168,7 +164,6 @@
     material = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
-      uniformEffects: {},
       uniforms: {
         uTime: { value: 0 },
         uResolution: { value: new THREE.Vector2(width, height) },
@@ -176,15 +171,11 @@
       },
       depthWrite: false,
       depthTest: false,
-    } as any);
+    });
 
     const geometry = new THREE.PlaneGeometry(2, 2);
     const quad = new THREE.Mesh(geometry, material);
     scene.add(quad);
-
-    let lastTime = performance.now();
-    let frameCount = 0;
-    let fpsTime = lastTime;
 
     const clock = new THREE.Clock();
 
@@ -208,9 +199,9 @@
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
 
-      // Mouse lerp for silky smooth fluid inertia
-      currentMouse.x += (targetMouse.x - currentMouse.x) * 0.055;
-      currentMouse.y += (targetMouse.y - currentMouse.y) * 0.055;
+      // Smooth lerp
+      currentMouse.x += (targetMouse.x - currentMouse.x) * 0.05;
+      currentMouse.y += (targetMouse.y - currentMouse.y) * 0.05;
 
       if (material) {
         material.uniforms.uTime.value = clock.getElapsedTime();
@@ -219,15 +210,6 @@
 
       if (renderer && scene && camera) {
         renderer.render(scene, camera);
-      }
-
-      // FPS tracking
-      const now = performance.now();
-      frameCount++;
-      if (now - fpsTime >= 1000) {
-        fps = Math.round((frameCount * 1000) / (now - fpsTime));
-        frameCount = 0;
-        fpsTime = now;
       }
     };
 
@@ -250,80 +232,25 @@
 </script>
 
 <div
-  class="relative w-full h-[540px] md:h-[620px] overflow-hidden select-none"
-  onmouseenter={() => (isHovered = true)}
-  onmouseleave={() => (isHovered = false)}
+  class="relative w-full h-[320px] md:h-[380px] overflow-hidden select-none border-b border-slate-900"
   role="region"
-  aria-label="Interactive Light Shader Hero"
+  aria-label="Optical Prism Banner"
 >
-  <!-- Three.js Canvas Container -->
+  <!-- Three.js Prism Canvas -->
   <div bind:this={canvasContainer} class="absolute inset-0 w-full h-full pointer-events-none"></div>
 
-  <!-- Noise Grain Overlay -->
-  <div class="absolute inset-0 bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none opacity-40"></div>
+  <!-- Noise Grain -->
+  <div class="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none opacity-30"></div>
 
-  <!-- Hero Content Overlay -->
-  <div class="relative z-10 max-w-5xl mx-auto h-full flex flex-col justify-between px-6 py-12 md:py-16">
-    <!-- Top System Status Badges -->
-    <div class="flex items-center justify-between text-xs font-mono text-slate-400">
-      <div class="flex items-center gap-2 bg-slate-900/70 border border-slate-800/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]"></span>
-        <span class="text-slate-200 font-medium">DISPERSION CORE</span>
-        <span class="text-slate-600">|</span>
-        <span class="text-slate-400">{gpuStatus}</span>
-      </div>
-
-      <div class="hidden sm:flex items-center gap-4 bg-slate-900/60 border border-slate-800/60 backdrop-blur-md px-3 py-1.5 rounded-full">
-        <span class="flex items-center gap-1.5 text-slate-400">
-          <Layers class="w-3.5 h-3.5 text-sky-400" />
-          <span>RAYMARCHING</span>
-        </span>
-        <span class="text-slate-600">•</span>
-        <span class="text-emerald-400 font-mono">{fps} FPS</span>
-      </div>
-    </div>
-
-    <!-- Main Title & Vision -->
-    <div class="max-w-2xl my-auto">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-mono bg-sky-500/10 border border-sky-500/30 text-sky-300 mb-6 backdrop-blur-sm">
-        <Sparkles class="w-3.5 h-3.5" />
-        <span>LIGHT, SHADERS & VISUAL COMPUTING</span>
-      </div>
-
-      <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight text-white leading-[1.12]">
-        Exploring the optics of <br />
-        <span class="bg-gradient-to-r from-sky-300 via-indigo-200 to-purple-400 bg-clip-text text-transparent">
-          interactive light & code
-        </span>
+  <!-- Minimal restrained overlay -->
+  <div class="relative z-10 max-w-4xl mx-auto h-full flex flex-col justify-end px-4 pb-8 pointer-events-none">
+    <div class="space-y-1">
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white font-sans">
+        vGPU<span class="text-slate-500">::</span>Light
       </h1>
-
-      <p class="mt-5 text-base sm:text-lg text-slate-300/90 leading-relaxed font-normal max-w-xl">
-        受物理光学、色散棱镜与计算图形学启发的思考工坊。记录 GPU 渲染、WGSL / GLSL 着色器探索、以及现代前端系统工程的实战案例。
+      <p class="text-xs sm:text-sm font-mono text-slate-400">
+        Optics, shaders & real-time graphics.
       </p>
-
-      <!-- Quick Nav Buttons -->
-      <div class="mt-8 flex flex-wrap items-center gap-3">
-        <a
-          href="#articles"
-          class="px-5 py-2.5 rounded-xl bg-sky-500 text-slate-950 font-semibold text-sm hover:bg-sky-400 transition-all duration-200 shadow-[0_0_20px_rgba(56,189,248,0.3)] flex items-center gap-2 cursor-pointer"
-        >
-          浏览文章
-          <span class="text-xs">↓</span>
-        </a>
-        <a
-          href="/cases"
-          class="px-5 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700/80 hover:border-slate-500 text-slate-200 font-medium text-sm backdrop-blur-sm transition-all duration-200 flex items-center gap-2 cursor-pointer"
-        >
-          查看案例库
-          <span class="text-xs">→</span>
-        </a>
-      </div>
-    </div>
-
-    <!-- Bottom Hint -->
-    <div class="flex items-center justify-between text-xs text-slate-500 font-mono pt-4 border-t border-slate-800/40">
-      <span>MOVE CURSOR TO REFRACT LIGHT FIELD</span>
-      <span class="hidden sm:inline">ASTRO 5 + SVELTE 5 + MDX</span>
     </div>
   </div>
 </div>

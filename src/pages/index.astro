@@ -1,8 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import LightHero from '../components/LightHero.svelte';
-import PostCard from '../components/PostCard.astro';
-import CaseCard from '../components/CaseCard.astro';
+import PostListItem from '../components/PostListItem.astro';
+import CaseListItem from '../components/CaseListItem.astro';
 import { getCollection } from 'astro:content';
 
 const allPosts = await getCollection('posts');
@@ -12,88 +12,58 @@ const sortedPosts = allPosts
 
 const allCases = await getCollection('cases');
 const sortedCases = allCases.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
-
-const allTags = Array.from(new Set(allPosts.flatMap((p) => p.data.tags)));
 ---
 
 <Layout
   title="vGPU::Light — 光线、着色器与图形工程"
-  description="一个受物理光学、色散棱镜与计算图形学启发的思考工坊。记录 GPU 渲染、WGSL / GLSL 着色器探索、以及现代前端系统工程的实战案例。"
+  description="实时光照着色器、色散棱镜与计算图形学。"
 >
-  <!-- Hero Section with Three.js Light Dispersion & Caustics Shader -->
+  <!-- Optical Light Prism Banner -->
   <LightHero client:load />
 
-  <!-- Main Content Area -->
-  <div class="max-w-5xl mx-auto px-6 py-12 space-y-20">
+  <!-- Content List Area -->
+  <div class="max-w-4xl mx-auto px-4 py-10 space-y-12">
     <!-- Section 1: Articles / 文章列表 -->
-    <section id="articles" class="scroll-mt-20">
-      <div class="flex items-end justify-between mb-8 pb-4 border-b border-slate-800/80">
-        <div>
-          <div class="flex items-center gap-2 text-xs font-mono text-sky-400 mb-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-            <span>WRITINGS & EXPERIMENTS</span>
-          </div>
-          <h2 class="text-2xl sm:text-3xl font-bold text-slate-100 tracking-tight">
-            最新文章
-          </h2>
-        </div>
+    <section>
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h2 class="text-xs font-mono font-semibold tracking-wider text-slate-400 uppercase">
+          文章 / WRITINGS
+        </h2>
         <a
           href="/posts"
-          class="text-xs font-mono text-slate-400 hover:text-sky-400 flex items-center gap-1 transition-colors"
+          class="text-xs font-mono text-slate-500 hover:text-sky-400 transition-colors"
         >
-          <span>查看全部 ({allPosts.length})</span>
-          <span>→</span>
+          ALL ({allPosts.length}) →
         </a>
       </div>
 
-      <!-- Article Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <!-- Pure Minimal List -->
+      <div class="divide-y divide-transparent">
         {sortedPosts.map((post) => (
-          <PostCard post={post} />
+          <PostListItem post={post} />
         ))}
       </div>
     </section>
 
     <!-- Section 2: Cases / 案例库 -->
-    <section id="cases" class="scroll-mt-20">
-      <div class="flex items-end justify-between mb-8 pb-4 border-b border-slate-800/80">
-        <div>
-          <div class="flex items-center gap-2 text-xs font-mono text-purple-400 mb-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
-            <span>INTERACTIVE SHOWCASE</span>
-          </div>
-          <h2 class="text-2xl sm:text-3xl font-bold text-slate-100 tracking-tight">
-            精选案例库
-          </h2>
-        </div>
+    <section>
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+        <h2 class="text-xs font-mono font-semibold tracking-wider text-slate-400 uppercase">
+          案例库 / SHOWCASE
+        </h2>
         <a
           href="/cases"
-          class="text-xs font-mono text-slate-400 hover:text-purple-400 flex items-center gap-1 transition-colors"
+          class="text-xs font-mono text-slate-500 hover:text-purple-400 transition-colors"
         >
-          <span>浏览案例库 ({allCases.length})</span>
-          <span>→</span>
+          ALL ({allCases.length}) →
         </a>
       </div>
 
-      <!-- Cases Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <!-- Pure Minimal List -->
+      <div class="divide-y divide-transparent">
         {sortedCases.map((item) => (
-          <CaseCard item={item} />
+          <CaseListItem item={item} />
         ))}
-      </div>
-    </section>
-
-    <!-- Philosophy / About banner inspired by Maxime Heckel -->
-    <section class="rounded-3xl border border-slate-800/70 bg-gradient-to-br from-slate-900/60 via-slate-900/20 to-slate-950 p-8 md:p-10 relative overflow-hidden">
-      <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div class="relative z-10 max-w-2xl">
-        <span class="text-xs font-mono text-sky-400 uppercase tracking-wider">CREATIVE ENGINEERING PHILOSOPHY</span>
-        <h3 class="text-xl md:text-2xl font-bold text-slate-100 mt-2 mb-4">
-          将代码视作光学的棱镜，让每一次计算折射出视觉美感
-        </h3>
-        <p class="text-sm text-slate-400 leading-relaxed">
-          现代 Web 不再局限于扁平图文。借助 WebGPU 与现代着色器硬件加速，我们在浏览器中构建微观光场、色散焦散与实时交互。每一篇文章与案例，均致力于打破工程代码与艺术光影之间的边界。
-        </p>
       </div>
     </section>
   </div>

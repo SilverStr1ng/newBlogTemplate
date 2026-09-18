@@ -1,0 +1,52 @@
+---
+interface Props {
+  item: {
+    id: string;
+    data: {
+      title: string;
+      type: string;
+      tech: string[];
+      link?: string;
+      github?: string;
+    };
+  };
+}
+
+const { item } = Astro.props;
+---
+
+<div class="group flex items-baseline justify-between gap-4 py-3.5 border-b border-slate-900/90 hover:border-slate-800 transition-all">
+  <div class="flex items-baseline gap-4 sm:gap-6 min-w-0">
+    <span class="text-xs font-mono text-purple-400/80 shrink-0 w-24 sm:w-28 truncate">
+      {item.data.type}
+    </span>
+
+    <a
+      href={`/cases/${item.id}`}
+      class="text-sm sm:text-base text-slate-300 font-normal group-hover:text-purple-300 transition-colors truncate"
+    >
+      {item.data.title}
+    </a>
+  </div>
+
+  <div class="flex items-center gap-3 shrink-0 text-xs font-mono">
+    <div class="hidden md:flex items-center gap-1.5 text-slate-400">
+      {item.data.tech.slice(0, 3).map((t) => (
+        <span class="bg-slate-900 px-1.5 py-0.5 rounded text-[11px] border border-slate-800/60">
+          {t}
+        </span>
+      ))}
+    </div>
+
+    {item.data.link && (
+      <a
+        href={item.data.link}
+        target="_blank"
+        rel="noreferrer"
+        class="text-purple-400 hover:text-purple-300 transition-colors"
+      >
+        DEMO ↗
+      </a>
+    )}
+  </div>
+</div>

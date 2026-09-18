@@ -1,0 +1,50 @@
+---
+interface Props {
+  post: {
+    id: string;
+    data: {
+      title: string;
+      pubDate: Date;
+      tags: string[];
+      readTime?: string;
+    };
+  };
+}
+
+const { post } = Astro.props;
+
+const dateStr = post.data.pubDate.toISOString().slice(0, 10).replace(/-/g, '.');
+const mainTag = post.data.tags[0] || '';
+---
+
+<a
+  href={`/posts/${post.id}`}
+  class="group flex items-baseline justify-between gap-4 py-3.5 border-b border-slate-900/90 hover:border-slate-800 transition-all"
+>
+  <div class="flex items-baseline gap-4 sm:gap-6 min-w-0">
+    <!-- Date -->
+    <time
+      datetime={post.data.pubDate.toISOString()}
+      class="text-xs font-mono text-slate-400 shrink-0 select-none group-hover:text-slate-400 transition-colors"
+    >
+      {dateStr}
+    </time>
+
+    <!-- Title -->
+    <span class="text-sm sm:text-base text-slate-300 font-normal group-hover:text-sky-300 transition-colors truncate">
+      {post.data.title}
+    </span>
+  </div>
+
+  <!-- Tag / Read time -->
+  <div class="flex items-center gap-3 shrink-0 text-xs font-mono text-slate-400">
+    {mainTag && (
+      <span class="hidden sm:inline text-slate-400 group-hover:text-slate-400 transition-colors">
+        #{mainTag}
+      </span>
+    )}
+    <span class="text-slate-400 group-hover:text-slate-400 transition-colors">
+      {post.data.readTime || '5 min'}
+    </span>
+  </div>
+</a>
