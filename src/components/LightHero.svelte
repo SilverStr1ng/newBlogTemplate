@@ -30,7 +30,7 @@
     { hex: '#ff3366', r: 255, g: 51, b: 102 },  // Neon Rose
     { hex: '#ffea00', r: 255, g: 234, b: 0 },   // Electric Yellow
     { hex: '#00ff66', r: 0, g: 255, b: 102 },   // Neon Green
-    { hex: '#aa44ff', r: 170, g: 68, b: 255 },  // Purple
+    { hex: '#bf5af2', r: 191, g: 90, b: 242 },  // Neon Purple
   ];
   let strokeColorIndex = 0;
 
@@ -71,7 +71,7 @@
 
       if (isPointerDown) {
         const dist = Math.hypot(currX - lastX, currY - lastY);
-        // Only record meaningful drag segments
+        // Record smooth continuous light drag segments
         if (dist > 3) {
           const colorObj = strokePalette[strokeColorIndex];
           userStrokes.push({
@@ -83,7 +83,7 @@
             rgb: colorObj,
             life: 1.0,
           });
-          if (userStrokes.length > 35) userStrokes.shift();
+          if (userStrokes.length > 40) userStrokes.shift();
           lastX = currX;
           lastY = currY;
         }
@@ -112,7 +112,7 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      // 1. Dark Architectural Floor Grid (48px cell, 1px line width matching vgpu grid_albedo)
+      // 1. Dark Architectural Floor Grid (from vgpu grid_albedo: 48px cell, 1px line width)
       const cellSize = 48;
       ctx.save();
       ctx.fillStyle = '#06070a';
@@ -136,20 +136,22 @@
         ctx.stroke();
       }
 
-      // 2. Element Positions (https://vgpu.sh/examples/radiance-cascades)
-      const centerX = w * 0.55;
-      const centerY = h * 0.50;
+      // 2. Refined Positions (Well-spaced to never crowd the title text)
+      const centerX = w * 0.58;
+      const centerY = h * 0.48;
       const diamondScale = Math.min(w, h) * 0.16;
 
-      // Fixed Neon Occluders/Emitters from vgpu example:
-      const g0 = { x: centerX - w * 0.25, y: centerY + h * 0.20 };
-      const g1 = { x: centerX - w * 0.12, y: centerY - h * 0.14 };
+      // Fixed Neon Occluders/Emitters (Moved further out to frame the scene gracefully):
+      // Green neon bar: positioned lower-left, away from the title area
+      const g0 = { x: centerX - w * 0.28, y: centerY + h * 0.28 };
+      const g1 = { x: centerX - w * 0.14, y: centerY - h * 0.02 };
 
-      const p0 = { x: centerX + w * 0.16, y: centerY - h * 0.22 };
-      const p1 = { x: centerX + w * 0.30, y: centerY + h * 0.18 };
+      // Purple neon bar: positioned upper-right
+      const p0 = { x: centerX + w * 0.16, y: centerY - h * 0.24 };
+      const p1 = { x: centerX + w * 0.32, y: centerY + h * 0.16 };
 
-      // Helper to cast soft penumbra shadows cast by the central Diamond Emitter
-      function castShadow(x0: number, y0: number, x1: number, y1: number, length: number, alphaMultiplier: number = 1.0) {
+      // Helper for soft, realistic Radiance Cascades penumbra shadows (Grid remains visible!)
+      function castSoftPenumbraShadow(x0: number, y0: number, x1: number, y1: number, length: number) {
         if (!ctx) return;
         const d0x = x0 - centerX, d0y = y0 - centerY;
         const d1x = x1 - centerX, d1y = y1 - centerY;
@@ -167,9 +169,13 @@
         ctx.lineTo(shadowP0.x, shadowP0.y);
         ctx.closePath();
 
-        const shadowGrad = ctx.createLinearGradient((x0 + x1) / 2, (y0 + y1) / 2, (shadowP0.x + shadowP1.x) / 2, (shadowP0.y + shadowP1.y) / 2);
-        shadowGrad.addColorStop(0, `rgba(5, 6, 9, ${0.85 * alphaMultiplier})`);
-        shadowGrad.addColorStop(0.5, `rgba(5, 6, 9, ${0.55 * alphaMultiplier})`);
+        // Soft, diffused penumbra (max opacity only 0.45, grid remains visible)
+        const shadowGrad = ctx.createLinearGradient(
+          (x0 + x1) / 2, (y0 + y1) / 2,
+          (shadowP0.x + shadowP1.x) / 2, (shadowP0.y + shadowP1.y) / 2
+        );
+        shadowGrad.addColorStop(0, 'rgba(5, 6, 9, 0.48)');
+        shadowGrad.addColorStop(0.5, 'rgba(5, 6, 9, 0.22)');
         shadowGrad.addColorStop(1, 'rgba(5, 6, 9, 0.0)');
         ctx.fillStyle = shadowGrad;
         ctx.fill();
@@ -178,41 +184,46 @@
 
       // --- 3. RADIANCE CASCADES: GLOBAL ILLUMINATION & LIGHT BLEEDING ---
       // A. Green Light Bleed onto Floor Grid
-      const greenRad = ctx.createRadialGradient((g0.x + g1.x) / 2, (g0.y + g1.y) / 2, 10, (g0.x + g1.x) / 2, (g0.y + g1.y) / 2, w * 0.38);
-      greenRad.addColorStop(0, 'rgba(34, 229, 119, 0.30)');
-      greenRad.addColorStop(0.35, 'rgba(25, 180, 95, 0.12)');
-      greenRad.addColorStop(0.7, 'rgba(15, 120, 60, 0.03)');
+      const greenRad = ctx.createRadialGradient(
+        (g0.x + g1.x) / 2, (g0.y + g1.y) / 2, 8,
+        (g0.x + g1.x) / 2, (g0.y + g1.y) / 2, w * 0.36
+      );
+      greenRad.addColorStop(0, 'rgba(34, 229, 119, 0.28)');
+      greenRad.addColorStop(0.35, 'rgba(25, 180, 95, 0.10)');
+      greenRad.addColorStop(0.7, 'rgba(15, 120, 60, 0.025)');
       greenRad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = greenRad;
       ctx.fillRect(0, 0, w, h);
 
       // B. Purple/Magenta Light Bleed onto Floor Grid
-      const purpleRad = ctx.createRadialGradient((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 10, (p0.x + p1.x) / 2, (p0.y + p1.y) / 2, w * 0.38);
-      purpleRad.addColorStop(0, 'rgba(216, 70, 240, 0.28)');
-      purpleRad.addColorStop(0.35, 'rgba(170, 45, 200, 0.11)');
-      purpleRad.addColorStop(0.7, 'rgba(110, 20, 140, 0.03)');
+      const purpleRad = ctx.createRadialGradient(
+        (p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 8,
+        (p0.x + p1.x) / 2, (p0.y + p1.y) / 2, w * 0.36
+      );
+      purpleRad.addColorStop(0, 'rgba(191, 90, 242, 0.26)');
+      purpleRad.addColorStop(0.35, 'rgba(150, 60, 200, 0.09)');
+      purpleRad.addColorStop(0.7, 'rgba(100, 20, 140, 0.025)');
       purpleRad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = purpleRad;
       ctx.fillRect(0, 0, w, h);
 
-      // C. Central Diamond Emitter Radiance (Radiates Warm White Light across the Grid)
-      const diamondRad = ctx.createRadialGradient(centerX, centerY, diamondScale * 0.3, centerX, centerY, w * 0.45);
-      diamondRad.addColorStop(0, 'rgba(255, 248, 235, 0.45)');
-      diamondRad.addColorStop(0.25, 'rgba(255, 235, 210, 0.20)');
-      diamondRad.addColorStop(0.6, 'rgba(200, 230, 255, 0.05)');
+      // C. Central Diamond Emitter Radiance (Warm White Light Across Floor Grid)
+      const diamondRad = ctx.createRadialGradient(centerX, centerY, diamondScale * 0.3, centerX, centerY, w * 0.44);
+      diamondRad.addColorStop(0, 'rgba(255, 248, 235, 0.42)');
+      diamondRad.addColorStop(0.25, 'rgba(255, 235, 210, 0.18)');
+      diamondRad.addColorStop(0.6, 'rgba(200, 230, 255, 0.04)');
       diamondRad.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = diamondRad;
       ctx.fillRect(0, 0, w, h);
 
-      // D. Cast Soft Penumbra Shadows behind the Fixed Neon Bars
-      castShadow(g0.x, g0.y, g1.x, g1.y, w * 0.4, 1.0);
-      castShadow(p0.x, p0.y, p1.x, p1.y, w * 0.4, 1.0);
+      // D. Soft Penumbra Shadows behind the fixed Neon Bars
+      castSoftPenumbraShadow(g0.x, g0.y, g1.x, g1.y, w * 0.36);
+      castSoftPenumbraShadow(p0.x, p0.y, p1.x, p1.y, w * 0.36);
 
-      // --- 4. USER STROKES PARTICIPATING IN RADIANCE CASCADES ---
-      // Update decay and participate in: 1) Radiance Light Bleed, 2) Shadow Casting, 3) Visual Tube
+      // --- 4. USER DRAWN LIGHT STROKES (Pure Emitters: Radiate light, NO ugly shadows!) ---
       for (let i = userStrokes.length - 1; i >= 0; i--) {
         const s = userStrokes[i];
-        s.life -= 0.0035; // Fades out over ~4 seconds
+        s.life -= 0.0035; // Fades out smoothly over ~4 seconds
         if (s.life <= 0) {
           userStrokes.splice(i, 1);
           continue;
@@ -222,25 +233,23 @@
         const midY = (s.y0 + s.y1) * 0.5;
         const strokeLen = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
 
-        // A. RADIANCE CASCADES: Stroke bleeds colored light onto the grid floor!
-        const bleedR = Math.max(strokeLen * 2.0, 70) * s.life;
-        const bleedGrad = ctx.createRadialGradient(midX, midY, 4, midX, midY, bleedR);
-        bleedGrad.addColorStop(0, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.32 * s.life})`);
-        bleedGrad.addColorStop(0.4, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.12 * s.life})`);
+        // A. RADIANCE CASCADES: Radiates 360-degree colored light onto the grid floor!
+        const bleedR = Math.max(strokeLen * 2.2, 80) * s.life;
+        const bleedGrad = ctx.createRadialGradient(midX, midY, 2, midX, midY, bleedR);
+        bleedGrad.addColorStop(0, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.36 * s.life})`);
+        bleedGrad.addColorStop(0.35, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.14 * s.life})`);
+        bleedGrad.addColorStop(0.7, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.03 * s.life})`);
         bleedGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = bleedGrad;
         ctx.fillRect(0, 0, w, h);
 
-        // B. RADIANCE CASCADES: Stroke acts as an occluder, casting soft penumbra shadow from Diamond light!
-        castShadow(s.x0, s.y0, s.x1, s.y1, w * 0.35, s.life * 0.85);
-
-        // C. Stroke Visual Emitter Core (Glowing neon tube with white-hot center)
+        // B. Luminous Neon Emitter Tube (White-hot core + colored neon bloom)
         ctx.save();
         ctx.strokeStyle = s.color;
-        ctx.lineWidth = 5.0 * s.life;
+        ctx.lineWidth = 5.5 * s.life;
         ctx.lineCap = 'round';
         ctx.shadowColor = s.color;
-        ctx.shadowBlur = 20 * s.life;
+        ctx.shadowBlur = 22 * s.life;
         ctx.globalAlpha = s.life;
 
         ctx.beginPath();
@@ -248,10 +257,10 @@
         ctx.lineTo(s.x1, s.y1);
         ctx.stroke();
 
-        // White-hot core
+        // White-hot inner core
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.0 * s.life;
-        ctx.shadowBlur = 4;
+        ctx.lineWidth = 2.2 * s.life;
+        ctx.shadowBlur = 5;
         ctx.stroke();
         ctx.restore();
       }
@@ -260,42 +269,42 @@
       // A. Green Neon Bar
       ctx.save();
       ctx.strokeStyle = '#22e577';
-      ctx.lineWidth = 5;
+      ctx.lineWidth = 5.2;
       ctx.lineCap = 'round';
       ctx.shadowColor = '#22e577';
-      ctx.shadowBlur = 24;
+      ctx.shadowBlur = 26;
       ctx.beginPath();
       ctx.moveTo(g0.x, g0.y);
       ctx.lineTo(g1.x, g1.y);
       ctx.stroke();
 
       ctx.strokeStyle = '#e6fff0';
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.4;
       ctx.shadowBlur = 6;
       ctx.stroke();
       ctx.restore();
 
-      // B. Purple/Magenta Neon Bar
+      // B. Purple Neon Bar
       ctx.save();
-      ctx.strokeStyle = '#d846f0';
-      ctx.lineWidth = 5;
+      ctx.strokeStyle = '#bf5af2';
+      ctx.lineWidth = 5.2;
       ctx.lineCap = 'round';
-      ctx.shadowColor = '#d846f0';
-      ctx.shadowBlur = 24;
+      ctx.shadowColor = '#bf5af2';
+      ctx.shadowBlur = 26;
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
       ctx.lineTo(p1.x, p1.y);
       ctx.stroke();
 
       ctx.strokeStyle = '#fbf0ff';
-      ctx.lineWidth = 2.2;
+      ctx.lineWidth = 2.4;
       ctx.shadowBlur = 6;
       ctx.stroke();
       ctx.restore();
 
       // --- 6. RENDER CENTRAL 3D GLB DIAMOND EMITTER (From dflat-D9eRXupj.glb) ---
-      const rotX = Math.sin(elapsed * 0.4) * 0.15 + (pointerY - 0.5) * 0.35;
-      const rotY = elapsed * 0.45 + (pointerX - 0.5) * 0.75;
+      const rotX = Math.sin(elapsed * 0.4) * 0.14 + (pointerY - 0.5) * 0.32;
+      const rotY = elapsed * 0.42 + (pointerX - 0.5) * 0.7;
 
       const cosX = Math.cos(rotX), sinX = Math.sin(rotX);
       const cosY = Math.cos(rotY), sinY = Math.sin(rotY);
@@ -316,7 +325,7 @@
         transformedVerts.push({
           x: x2, y: y1, z: z2,
           sx: centerX + x2,
-          sy: centerY - y1, // Invert Y for canvas coordinate space
+          sy: centerY - y1,
         });
       }
 
@@ -347,24 +356,23 @@
         });
       }
 
-      // Depth sorting
+      // Depth sorting (back-to-front)
       triangles.sort((a, b) => a.centerZ - b.centerZ);
 
-      // Render 3D Diamond Model Facets as an Intense Luminous Emitter
       ctx.save();
 
       // Outer diamond brilliant radiance aura
-      const diamondAura = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, diamondScale * 1.65);
-      diamondAura.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+      const diamondAura = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, diamondScale * 1.6);
+      diamondAura.addColorStop(0, 'rgba(255, 255, 255, 0.90)');
       diamondAura.addColorStop(0.3, 'rgba(220, 245, 255, 0.42)');
       diamondAura.addColorStop(0.7, 'rgba(100, 200, 255, 0.08)');
       diamondAura.addColorStop(1, 'rgba(0, 0, 0, 0)');
       ctx.fillStyle = diamondAura;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, diamondScale * 1.65, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, diamondScale * 1.6, 0, Math.PI * 2);
       ctx.fill();
 
-      // Render all facets of the dflat diamond model
+      // Render 3D Diamond Model Facets
       for (const tri of triangles) {
         ctx.beginPath();
         ctx.moveTo(tri.p0.sx, tri.p0.sy);
@@ -372,16 +380,16 @@
         ctx.lineTo(tri.p2.sx, tri.p2.sy);
         ctx.closePath();
 
-        const isFront = tri.normalZ < 0; // Screen-space facing
+        const isFront = tri.normalZ < 0;
 
         if (isFront) {
-          // Front-facing radiant facet: warm white emitter with diamond facet sparkle
+          // Front-facing radiant facet: warm white emitter with facet sparkle
           ctx.fillStyle = 'rgba(255, 255, 255, 0.94)';
           ctx.shadowColor = '#ffffff';
           ctx.shadowBlur = 18;
           ctx.fill();
 
-          // Cut facet edge glints
+          // Brilliant cut facet edge lines
           ctx.strokeStyle = 'rgba(180, 235, 255, 0.92)';
           ctx.lineWidth = 1.25;
           ctx.shadowBlur = 8;
@@ -399,7 +407,7 @@
 
       ctx.restore();
 
-      // 7. Pointer Indicator when hovering
+      // 7. Subtle Hover Indicator
       if (pointerX > 0 && pointerY > 0 && !isPointerDown) {
         const px = pointerX * w;
         const py = pointerY * h;
@@ -431,7 +439,7 @@
   role="region"
   aria-label="rakuyou's labyrinth radiance cascades diamond hero"
 >
-  <!-- Native Radiance Cascades Canvas with dflat-D9eRXupj.glb Diamond Emitter -->
+  <!-- Radiance Cascades Canvas with 3D Diamond Emitter -->
   <canvas
     bind:this={canvasRef}
     class="absolute inset-0 w-full h-full block"
