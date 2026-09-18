@@ -9,15 +9,15 @@ interface Props {
 }
 
 const {
-  title = 'vGPU::Light — Interactive Graphics, Shaders & Engineering',
-  description = 'A blog exploring real-time graphics, WebGPU/WebGL shaders, light simulation, and modern frontend architecture.',
+  title = "rakuyou's labyrinth — Graphics, Shaders & Real-Time Optics",
+  description = "A personal digital labyrinth exploring WebGPU, GLSL shaders, optical simulations, and modern frontend systems.",
 } = Astro.props;
 
 const currentPath = Astro.url.pathname;
 ---
 
 <!doctype html>
-<html lang="zh-CN" class="scroll-smooth">
+<html lang="zh-CN" class="scroll-smooth dark bg-black">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -28,11 +28,11 @@ const currentPath = Astro.url.pathname;
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..700;1,6..72,400&family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
   </head>
-  <body class="bg-[#08090d] text-slate-200 min-h-screen flex flex-col antialiased selection:bg-sky-500/30 selection:text-sky-200">
+  <body class="bg-black text-[#ededed] min-h-screen flex flex-col antialiased selection:bg-sky-500/30 selection:text-white">
     <Navbar currentPath={currentPath} />
     <main class="flex-grow">
       <slot />

@@ -6,50 +6,72 @@ interface Props {
 const { currentPath = '/' } = Astro.props;
 
 const navItems = [
-  { name: '首页', href: '/' },
   { name: '文章', href: '/posts' },
   { name: '案例库', href: '/cases' },
 ];
 ---
 
-<header class="sticky top-0 z-50 w-full backdrop-blur-md bg-[#08090d]/80 border-b border-slate-800/50">
-  <div class="max-w-4xl mx-auto px-4 h-12 flex items-center justify-between">
-    <!-- Brand -->
-    <a href="/" class="flex items-center gap-2 group">
-      <span class="w-1.5 h-1.5 rounded-full bg-sky-400 group-hover:shadow-[0_0_8px_#38bdf8] transition-shadow"></span>
-      <span class="font-mono font-semibold text-xs tracking-wider text-slate-200 group-hover:text-white transition-colors">
-        vGPU<span class="text-slate-500">/</span>light
-      </span>
-    </a>
+<header class="sticky top-0 z-50 w-full backdrop-blur-md bg-black/60 border-b border-white/[0.08]">
+  <div class="max-w-[1400px] mx-auto px-6 h-14 flex items-center justify-between">
+    <!-- Left: Triangle + Brand + Links -->
+    <div class="flex items-center gap-6">
+      <a href="/" class="flex items-center gap-2.5 text-zinc-100 hover:text-white transition-colors group">
+        <!-- Vercel-style White Triangle Icon -->
+        <svg
+          class="w-4 h-4 text-white fill-current transition-transform group-hover:scale-110"
+          viewBox="0 0 75 65"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path d="M37.5 0L75 65H0L37.5 0Z" />
+        </svg>
 
-    <!-- Nav Links -->
-    <nav class="flex items-center gap-1 sm:gap-2">
-      {navItems.map((item) => {
-        const isActive = currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href));
-        return (
-          <a
-            href={item.href}
-            class={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${
-              isActive
-                ? 'text-sky-400 bg-sky-500/10'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {item.name}
-          </a>
-        );
-      })}
+        <span class="text-zinc-600 font-light select-none">/</span>
 
-      <div class="h-3 w-[1px] bg-slate-800 mx-1"></div>
+        <span class="font-serif italic font-medium text-base tracking-tight text-white">
+          rakuyou<span class="font-sans not-italic text-xs text-zinc-400 ml-1">labyrinth</span>
+        </span>
+      </a>
+
+      <!-- Nav items -->
+      <nav class="hidden sm:flex items-center gap-4 text-xs font-mono text-zinc-400">
+        {navItems.map((item) => {
+          const isActive = currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href));
+          return (
+            <a
+              href={item.href}
+              class={`transition-colors py-1 ${
+                isActive ? 'text-white font-medium' : 'hover:text-zinc-200'
+              }`}
+            >
+              {item.name}
+            </a>
+          );
+        })}
+      </nav>
+    </div>
+
+    <!-- Right: Search + GitHub -->
+    <div class="flex items-center gap-3">
+      <a
+        href="/posts"
+        class="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-lg bg-zinc-900/80 border border-zinc-800 text-xs font-mono text-zinc-400 hover:text-zinc-200 hover:border-zinc-700 transition-colors"
+      >
+        <span>Search...</span>
+        <kbd class="text-[10px] bg-zinc-800 border border-zinc-700 px-1.5 py-0.5 rounded text-zinc-400">⌘K</kbd>
+      </a>
 
       <a
         href="https://github.com"
         target="_blank"
         rel="noreferrer"
-        class="text-xs font-mono text-slate-500 hover:text-slate-300 px-2 py-1 transition-colors"
+        class="text-zinc-400 hover:text-white transition-colors p-1"
+        aria-label="GitHub"
       >
-        GITHUB ↗
+        <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
+        </svg>
       </a>
-    </nav>
+    </div>
   </div>
 </header>

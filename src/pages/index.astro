@@ -15,30 +15,30 @@ const sortedCases = allCases.sort((a, b) => b.data.pubDate.valueOf() - a.data.pu
 ---
 
 <Layout
-  title="vGPU::Light — 光线、着色器与图形工程"
-  description="实时光照着色器、色散棱镜与计算图形学。"
+  title="rakuyou's labyrinth — 光线、着色器与图形计算"
+  description="沉淀关于 WebGPU、GLSL 光学着色器、三维渲染管线及现代前端工程的数字迷宫。"
 >
-  <!-- Optical Light Prism Banner -->
+  <!-- 1:1 vgpu-style Optical Light Prism Banner -->
   <LightHero client:load />
 
   <!-- Content List Area -->
-  <div class="max-w-4xl mx-auto px-4 py-10 space-y-12">
+  <div class="max-w-5xl mx-auto px-6 sm:px-8 py-14 space-y-16">
     <!-- Section 1: Articles / 文章列表 -->
     <section>
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <h2 class="text-xs font-mono font-semibold tracking-wider text-slate-400 uppercase">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+        <h2 class="text-xs font-mono font-semibold tracking-wider text-zinc-400 uppercase">
           文章 / WRITINGS
         </h2>
         <a
           href="/posts"
-          class="text-xs font-mono text-slate-500 hover:text-sky-400 transition-colors"
+          class="text-xs font-mono text-zinc-500 hover:text-white transition-colors"
         >
           ALL ({allPosts.length}) →
         </a>
       </div>
 
       <!-- Pure Minimal List -->
-      <div class="divide-y divide-transparent">
+      <div class="divide-y divide-zinc-900/60">
         {sortedPosts.map((post) => (
           <PostListItem post={post} />
         ))}
@@ -47,20 +47,20 @@ const sortedCases = allCases.sort((a, b) => b.data.pubDate.valueOf() - a.data.pu
 
     <!-- Section 2: Cases / 案例库 -->
     <section>
-      <div class="flex items-center justify-between pb-3 border-b border-slate-800">
-        <h2 class="text-xs font-mono font-semibold tracking-wider text-slate-400 uppercase">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+        <h2 class="text-xs font-mono font-semibold tracking-wider text-zinc-400 uppercase">
           案例库 / SHOWCASE
         </h2>
         <a
           href="/cases"
-          class="text-xs font-mono text-slate-500 hover:text-purple-400 transition-colors"
+          class="text-xs font-mono text-zinc-500 hover:text-purple-400 transition-colors"
         >
           ALL ({allCases.length}) →
         </a>
       </div>
 
       <!-- Pure Minimal List -->
-      <div class="divide-y divide-transparent">
+      <div class="divide-y divide-zinc-900/60">
         {sortedCases.map((item) => (
           <CaseListItem item={item} />
         ))}

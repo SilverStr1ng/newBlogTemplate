@@ -1,256 +1,165 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import * as THREE from 'three';
 
-  let canvasContainer: HTMLDivElement | null = null;
-  let renderer: THREE.WebGLRenderer | null = null;
-  let scene: THREE.Scene | null = null;
-  let camera: THREE.OrthographicCamera | null = null;
-  let material: THREE.ShaderMaterial | null = null;
-  let animationFrameId: number = 0;
+  let heroRef: HTMLDivElement | null = null;
+  let canvasRef: HTMLCanvasElement | null = null;
+  let mouseX = $state(0.5);
+  let mouseY = $state(0.5);
 
-  // Smooth mouse coordinates (lerp)
-  const targetMouse = { x: 0.5, y: 0.5 };
-  const currentMouse = { x: 0.5, y: 0.5 };
+  let targetX = 0.5;
+  let targetY = 0.5;
+  let currentX = 0.5;
+  let currentY = 0.5;
+  let animId = 0;
 
-  const vertexShader = `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = vec4(position, 1.0);
-    }
-  `;
-
-  // Optical Light Prism Shader: Incident White Ray -> Glass Triangle -> Spectral Dispersion (Rainbow Fan)
-  const fragmentShader = `
-    uniform float uTime;
-    uniform vec2 uResolution;
-    uniform vec2 uMouse;
-    varying vec2 vUv;
-
-    // Equilateral triangle distance function
-    float sdTriangleIsosceles(in vec2 p, in vec2 q) {
-      p.x = abs(p.x);
-      vec2 a = p - q * clamp(dot(p, q) / dot(q, q), 0.0, 1.0);
-      vec2 b = p - q * vec2(clamp(p.x / q.x, 0.0, 1.0), 1.0);
-      float k = sign(q.y);
-      float d = min(dot(a, a), dot(b, b));
-      float s = max(k * (p.x * q.y - p.y * q.x), k * (p.y - q.y));
-      return sqrt(d) * sign(s);
-    }
-
-    // Gaussian beam intensity along a 2D line segment
-    float beamSegment(vec2 p, vec2 a, vec2 b, float thickness) {
-      vec2 pa = p - a;
-      vec2 ba = b - a;
-      float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
-      float d = length(pa - ba * h);
-      return exp(-d * d / (thickness * thickness));
-    }
-
-    // Convert wavelength (normalized 0.0 - 1.0, approx 400nm to 700nm) to RGB spectral color
-    vec3 spectralColor(float t) {
-      // Smooth approximation of visible spectrum (violet -> blue -> cyan -> green -> yellow -> red)
-      float r = smoothstep(0.5, 0.8, t) + (1.0 - smoothstep(0.0, 0.25, t)) * 0.4;
-      float g = sin(clamp(t * 3.1415, 0.0, 3.1415));
-      float b = 1.0 - smoothstep(0.2, 0.65, t);
-      // Boost vividness and balance
-      vec3 c = vec3(r, g * 0.95, b);
-      c += vec3(0.15, 0.25, 0.4) * (1.0 - abs(t - 0.3) * 3.0);
-      return max(c, vec3(0.0));
-    }
-
-    void main() {
-      vec2 uv = (gl_FragCoord.xy - 0.5 * uResolution.xy) / min(uResolution.x, uResolution.y);
-      vec2 st = gl_FragCoord.xy / uResolution.xy;
-
-      // Mouse interactive tilt and position
-      vec2 m = (uMouse - 0.5) * 0.8;
-      float time = uTime * 0.5;
-
-      // Prism geometry (Equilateral glass prism centered slightly to the left)
-      vec2 prismCenter = vec2(-0.18, -0.02);
-      vec2 pTri = uv - prismCenter;
-      // Invert Y for triangle apex pointing up
-      pTri.y = -pTri.y;
-      float prismDist = sdTriangleIsosceles(pTri + vec2(0.0, 0.16), vec2(0.32, 0.48));
-
-      // Light Origin (Left side, controlled by mouse Y)
-      vec2 incidentStart = vec2(-0.85, 0.22 + m.y * 0.45);
-      vec2 incidentHit = prismCenter + vec2(-0.15, 0.02 + m.y * 0.08);
-
-      // 1. Incident White Beam
-      float incident = beamSegment(uv, incidentStart, incidentHit, 0.016);
-      incident += beamSegment(uv, incidentStart, incidentHit, 0.06) * 0.4;
-      vec3 col = vec3(0.95, 0.98, 1.0) * incident * 2.2;
-
-      // 2. Internal Refraction inside Prism
-      vec2 internalExit = prismCenter + vec2(0.14, -0.05 + m.y * 0.04);
-      if (prismDist < 0.0) {
-        float internalBeam = beamSegment(uv, incidentHit, internalExit, 0.022);
-        internalBeam += beamSegment(uv, incidentHit, internalExit, 0.07) * 0.5;
-        col += vec3(0.9, 0.95, 1.0) * internalBeam * 1.8;
-
-        // Glass volume subtle caustics/glow
-        col += vec3(0.2, 0.4, 0.7) * (1.0 - smoothstep(-0.15, 0.0, prismDist)) * 0.25;
-      }
-
-      // 3. Prism Glass Edges & Internal Reflection
-      float edge = 1.0 - smoothstep(0.0, 0.014, abs(prismDist));
-      col += vec3(0.6, 0.8, 1.0) * edge * 0.85;
-
-      // Weak Fresnel Reflection Beam off the entry face
-      vec2 reflectDir = normalize(incidentHit - incidentStart);
-      reflectDir.y = -reflectDir.y * 0.85;
-      vec2 reflectEnd = incidentHit + reflectDir * 0.5;
-      float reflection = beamSegment(uv, incidentHit, reflectEnd, 0.015);
-      col += vec3(0.7, 0.85, 1.0) * reflection * 0.25;
-
-      // 4. Dispersion: Fan of Spectral Beams (Rainbow Rays) exiting the right face
-      const int SAMPLES = 18;
-      for (int i = 0; i < SAMPLES; i++) {
-        float f = float(i) / float(SAMPLES - 1);
-        // Dispersion angle spreading based on wavelength
-        float fanAngle = -0.18 + f * 0.48 + m.y * 0.2;
-        vec2 dir = vec2(cos(fanAngle), sin(fanAngle));
-        vec2 rayEnd = internalExit + dir * 1.4;
-
-        // Spectral color for this wavelength
-        vec3 rayColor = spectralColor(1.0 - f);
-
-        // Core thin beam + volumetric glow
-        float ray = beamSegment(uv, internalExit, rayEnd, 0.012 + f * 0.008);
-        float rayGlow = beamSegment(uv, internalExit, rayEnd, 0.055 + f * 0.02) * 0.35;
-
-        // Distance attenuation from exit
-        float distFactor = clamp(uv.x - internalExit.x, 0.0, 1.0);
-        col += rayColor * (ray * 1.6 + rayGlow) * (0.8 + distFactor * 0.4);
-      }
-
-      // Subtle ambient particle dust in the beam
-      float dust = sin(uv.x * 40.0 + time) * cos(uv.y * 40.0 - time);
-      col += vec3(0.8, 0.9, 1.0) * max(0.0, dust) * 0.04 * step(internalExit.x, uv.x);
-
-      // Deep obsidian space background
-      vec3 bg = vec3(0.031, 0.035, 0.051);
-      col = max(col, bg);
-
-      // Bottom fade out into solid page background (#08090d)
-      float bottomFade = smoothstep(0.0, 0.35, st.y);
-      col = mix(bg, col, bottomFade);
-
-      // Top subtle fade
-      float topFade = smoothstep(1.0, 0.85, st.y);
-      col = mix(bg, col, topFade);
-
-      gl_FragColor = vec4(col, 1.0);
-    }
-  `;
+  // Dust particles floating in the light beam
+  interface Particle {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    size: number;
+    alpha: number;
+  }
+  const particles: Particle[] = [];
 
   onMount(() => {
-    if (!canvasContainer) return;
+    if (!canvasRef || !heroRef) return;
+    const canvas = canvasRef;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    const width = canvasContainer.clientWidth;
-    const height = canvasContainer.clientHeight;
-
-    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(width, height);
-    canvasContainer.appendChild(renderer.domElement);
-
-    scene = new THREE.Scene();
-    camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-
-    material = new THREE.ShaderMaterial({
-      vertexShader,
-      fragmentShader,
-      uniforms: {
-        uTime: { value: 0 },
-        uResolution: { value: new THREE.Vector2(width, height) },
-        uMouse: { value: new THREE.Vector2(0.5, 0.5) },
-      },
-      depthWrite: false,
-      depthTest: false,
-    });
-
-    const geometry = new THREE.PlaneGeometry(2, 2);
-    const quad = new THREE.Mesh(geometry, material);
-    scene.add(quad);
-
-    const clock = new THREE.Clock();
-
-    const handleResize = () => {
-      if (!canvasContainer || !renderer || !material) return;
-      const w = canvasContainer.clientWidth;
-      const h = canvasContainer.clientHeight;
-      renderer.setSize(w, h);
-      material.uniforms.uResolution.value.set(w, h);
+    const resize = () => {
+      if (!heroRef || !canvas) return;
+      canvas.width = heroRef.clientWidth;
+      canvas.height = heroRef.clientHeight;
     };
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Initialize subtle light motes
+    for (let i = 0; i < 45; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.3 - 0.2,
+        vy: (Math.random() - 0.5) * 0.2,
+        size: Math.random() * 1.8 + 0.6,
+        alpha: Math.random() * 0.5 + 0.2,
+      });
+    }
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!canvasContainer) return;
-      const rect = canvasContainer.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = 1.0 - (e.clientY - rect.top) / rect.height;
-      targetMouse.x = Math.max(0, Math.min(1, x));
-      targetMouse.y = Math.max(0, Math.min(1, y));
+      if (!heroRef) return;
+      const rect = heroRef.getBoundingClientRect();
+      targetX = (e.clientX - rect.left) / rect.width;
+      targetY = (e.clientY - rect.top) / rect.height;
     };
-
-    const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
-
-      // Smooth lerp
-      currentMouse.x += (targetMouse.x - currentMouse.x) * 0.05;
-      currentMouse.y += (targetMouse.y - currentMouse.y) * 0.05;
-
-      if (material) {
-        material.uniforms.uTime.value = clock.getElapsedTime();
-        material.uniforms.uMouse.value.set(currentMouse.x, currentMouse.y);
-      }
-
-      if (renderer && scene && camera) {
-        renderer.render(scene, camera);
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
     window.addEventListener('mousemove', handleMouseMove);
-    animate();
+
+    const render = () => {
+      animId = requestAnimationFrame(render);
+      currentX += (targetX - currentX) * 0.05;
+      currentY += (targetY - currentY) * 0.05;
+      mouseX = currentX;
+      mouseY = currentY;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Render floating illuminated dust motes
+      for (const p of particles) {
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${p.alpha * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Subtle dynamic flare at the prism entrance point (around 72% x, 52% y)
+      const flareX = canvas.width * 0.72 + (currentX - 0.5) * 20;
+      const flareY = canvas.height * 0.51 + (currentY - 0.5) * 15;
+      const grad = ctx.createRadialGradient(flareX, flareY, 0, flareX, flareY, 180);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.15)');
+      grad.addColorStop(0.3, 'rgba(160, 220, 255, 0.05)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(flareX, flareY, 180, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    render();
 
     return () => {
-      cancelAnimationFrame(animationFrameId);
-      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animId);
+      window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', handleMouseMove);
-      if (renderer && renderer.domElement.parentNode) {
-        renderer.domElement.parentNode.removeChild(renderer.domElement);
-        renderer.dispose();
-      }
-      geometry.dispose();
-      if (material) material.dispose();
     };
   });
 </script>
 
 <div
-  class="relative w-full h-[320px] md:h-[380px] overflow-hidden select-none border-b border-slate-900"
+  bind:this={heroRef}
+  class="relative w-full min-h-[560px] md:min-h-[640px] lg:min-h-[720px] bg-black overflow-hidden select-none flex items-center"
   role="region"
-  aria-label="Optical Prism Banner"
+  aria-label="rakuyou's labyrinth hero banner"
 >
-  <!-- Three.js Prism Canvas -->
-  <div bind:this={canvasContainer} class="absolute inset-0 w-full h-full pointer-events-none"></div>
+  <!-- Background 3D Glass Prism Layer (1:1 from vgpu) -->
+  <div class="absolute inset-0 w-full h-full pointer-events-none overflow-hidden flex items-center justify-end">
+    <img
+      src="/hero-prism.webp"
+      alt="Optical Light Prism with Spectral Rainbow Dispersion"
+      class="w-full h-full object-cover object-center lg:object-right scale-100 transition-transform duration-700 ease-out pointer-events-none"
+      style="transform: translate({(mouseX - 0.5) * -12}px, {(mouseY - 0.5) * -8}px);"
+      loading="eager"
+      decoding="async"
+    />
+  </div>
 
-  <!-- Noise Grain -->
-  <div class="absolute inset-0 bg-[radial-gradient(#ffffff08_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none opacity-30"></div>
+  <!-- Interactive Canvas Overlay (Dust motes & reactive light flares) -->
+  <canvas
+    bind:this={canvasRef}
+    class="absolute inset-0 w-full h-full pointer-events-none z-10"
+  ></canvas>
 
-  <!-- Minimal restrained overlay -->
-  <div class="relative z-10 max-w-4xl mx-auto h-full flex flex-col justify-end px-4 pb-8 pointer-events-none">
-    <div class="space-y-1">
-      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white font-sans">
-        vGPU<span class="text-slate-500">::</span>Light
+  <!-- Bottom seamless fade into black background -->
+  <div class="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black via-black/70 to-transparent pointer-events-none z-10"></div>
+
+  <!-- Foreground Content Overlay (Aligned to left column, matching vgpu layout) -->
+  <div class="relative z-20 w-full max-w-[1400px] mx-auto px-6 sm:px-8 py-16 md:py-24">
+    <div class="max-w-xl">
+      <!-- Title: High fashion serif, matching vgpu wordmark elegance -->
+      <h1 class="text-6xl sm:text-7xl md:text-8xl lg:text-[5.5rem] font-serif font-normal tracking-tight text-white leading-[0.95] drop-shadow-[0_4px_24px_rgba(0,0,0,0.8)]">
+        rakuyou<span class="italic font-light text-zinc-400">’s</span><br />
+        <span class="text-white">labyrinth</span>
       </h1>
-      <p class="text-xs sm:text-sm font-mono text-slate-400">
-        Optics, shaders & real-time graphics.
+
+      <!-- Subtitle: Clean sans-serif -->
+      <p class="mt-6 text-2xl sm:text-3xl font-light text-zinc-100 tracking-tight leading-snug drop-shadow-[0_2px_12px_rgba(0,0,0,0.9)] max-w-md">
+        The graphics, shader & real-time optics notebook.
       </p>
+
+      <!-- Meta Tags row -->
+      <div class="mt-8 flex flex-wrap items-center gap-3 text-xs font-mono text-zinc-400 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]">
+        <span class="text-white font-medium">Prompt</span>
+        <span class="text-zinc-600">•</span>
+        <span class="text-zinc-300">Shaders</span>
+        <span class="text-zinc-600">•</span>
+        <span class="text-zinc-300">WebGPU</span>
+        <span class="text-zinc-600">•</span>
+        <span class="text-zinc-300">Optics</span>
+      </div>
+
+      <!-- Quick Command / Prompt -->
+      <div class="mt-5 text-xs font-mono text-zinc-400 flex items-center gap-2 drop-shadow">
+        <span class="text-sky-400">λ</span>
+        <span class="text-zinc-400">Enter the labyrinth: explore writings & cases below</span>
+      </div>
     </div>
   </div>
 </div>
