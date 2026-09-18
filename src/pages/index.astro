@@ -2,7 +2,6 @@
 import Layout from '../layouts/Layout.astro';
 import LightHero from '../components/LightHero.svelte';
 import PostListItem from '../components/PostListItem.astro';
-import CaseListItem from '../components/CaseListItem.astro';
 import { getCollection } from 'astro:content';
 
 const allPosts = await getCollection('posts');
@@ -10,22 +9,28 @@ const sortedPosts = allPosts
   .filter((p) => !p.data.draft)
   .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
 
-const allCases = await getCollection('cases');
-const sortedCases = allCases.sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+// Group articles by publication year
+const postsByYear = sortedPosts.reduce((acc, post) => {
+  const year = post.data.pubDate.getFullYear();
+  if (!acc[year]) acc[year] = [];
+  acc[year].push(post);
+  return acc;
+}, {} as Record<number, typeof sortedPosts>);
+
+const years = Object.keys(postsByYear).map(Number).sort((a, b) => b - a);
 ---
 
 <Layout
   title="rakuyou's labyrinth — 光线、着色器与图形计算"
-  description="沉淀关于 WebGPU、GLSL 光学着色器、三维渲染管线及现代前端工程的数字迷宫。"
+  description="记录关于 WebGPU、GLSL 光学着色器、三维渲染管线及现代前端工程的数字迷宫。"
 >
-  <!-- 1:1 vgpu-style Optical Light Prism Banner -->
+  <!-- Interactive Optical Light Prism Banner -->
   <LightHero client:load />
 
-  <!-- Content List Area -->
-  <div class="max-w-6xl mx-auto px-6 sm:px-8 py-12 space-y-16">
-    <!-- Section 1: Articles / 文章列表 -->
+  <!-- Article Archive (Grouped by Year, No Cases on Homepage) -->
+  <div class="max-w-6xl mx-auto px-6 sm:px-8 py-14">
     <section>
-      <div class="flex items-center justify-between pb-3 border-b border-zinc-800/80">
+      <div class="flex items-center justify-between pb-3 border-b border-zinc-800/80 mb-6">
         <h2 class="text-xs font-mono font-semibold tracking-wider text-zinc-400 uppercase">
           文章 / WRITINGS
         </h2>
@@ -37,32 +42,22 @@ const sortedCases = allCases.sort((a, b) => b.data.pubDate.valueOf() - a.data.pu
         </a>
       </div>
 
-      <!-- Pure Minimal List -->
-      <div class="divide-y divide-zinc-900/60">
-        {sortedPosts.map((post) => (
-          <PostListItem post={post} />
-        ))}
-      </div>
-    </section>
+      <!-- Year Groups -->
+      <div class="space-y-10">
+        {years.map((year) => (
+          <div>
+            <!-- Year Header -->
+            <div class="text-xs font-mono font-bold text-zinc-500 mb-2 select-none">
+              {year}
+            </div>
 
-    <!-- Section 2: Cases / 案例库 -->
-    <section>
-      <div class="flex items-center justify-between pb-3 border-b border-zinc-800/80">
-        <h2 class="text-xs font-mono font-semibold tracking-wider text-zinc-400 uppercase">
-          案例库 / SHOWCASE
-        </h2>
-        <a
-          href="/cases"
-          class="text-xs font-mono text-zinc-500 hover:text-purple-400 transition-colors"
-        >
-          ALL ({allCases.length}) →
-        </a>
-      </div>
-
-      <!-- Pure Minimal List -->
-      <div class="divide-y divide-zinc-900/60">
-        {sortedCases.map((item) => (
-          <CaseListItem item={item} />
+            <!-- Posts in this year -->
+            <div class="divide-y divide-zinc-900/80 border-t border-zinc-900/80">
+              {postsByYear[year].map((post) => (
+                <PostListItem post={post} />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
     </section>

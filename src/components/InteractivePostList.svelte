@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Search, X, Hash } from '@lucide/svelte';
+  import { Search, X } from '@lucide/svelte';
 
   interface PostItem {
     id: string;
@@ -12,101 +12,111 @@
 
   interface Props {
     posts: PostItem[];
-    allTags: string[];
   }
 
-  let { posts = [], allTags = [] }: Props = $props();
+  let { posts = [] }: Props = $props();
 
-  let selectedTag = $state('');
   let searchQuery = $state('');
 
   const filteredPosts = $derived(
     posts.filter((p) => {
-      const matchTag = !selectedTag || p.tags.includes(selectedTag);
       const q = searchQuery.toLowerCase().trim();
-      const matchSearch =
-        !q ||
+      if (!q) return true;
+      return (
         p.title.toLowerCase().includes(q) ||
-        p.tags.some((t) => t.toLowerCase().includes(q));
-      return matchTag && matchSearch;
+        p.description.toLowerCase().includes(q) ||
+        p.tags.some((t) => t.toLowerCase().includes(q))
+      );
     })
   );
 
+  // Group filtered posts by Year
+  const groupedByYear = $derived.by(() => {
+    const map = new Map<number, PostItem[]>();
+    for (const post of filteredPosts) {
+      const year = new Date(post.pubDate).getFullYear();
+      if (!map.has(year)) map.set(year, []);
+      map.get(year)!.push(post);
+    }
+    return Array.from(map.entries()).sort((a, b) => b[0] - a[0]);
+  });
+
   function formatDate(iso: string) {
-    return iso.slice(0, 10).replace(/-/g, '.');
+    const d = new Date(iso);
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${month}.${day}`;
   }
 </script>
 
-<div class="space-y-6">
-  <!-- Minimal Search & Tags Row -->
-  <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
-    <div class="relative flex-1 max-w-xs">
-      <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+<div class="space-y-8">
+  <!-- Minimal, Unified Search Input (No Crowded Tags Row) -->
+  <div class="flex items-center justify-between gap-4 pb-4 border-b border-zinc-800">
+    <div class="relative flex-1 max-w-md">
+      <Search class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
       <input
         type="text"
-        placeholder="搜索文章..."
+        placeholder="搜索文章标题、着色器或技术关键词..."
         bind:value={searchQuery}
-        class="w-full pl-8 pr-7 py-1.5 rounded-lg bg-slate-900/80 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-sky-500/50 transition-colors font-mono"
+        class="w-full pl-10 pr-8 py-2 rounded-xl bg-zinc-900/60 border border-zinc-800 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-500 transition-colors font-mono"
       />
       {#if searchQuery}
         <button
           onclick={() => (searchQuery = '')}
-          class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+          class="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+          aria-label="Clear search"
         >
-          <X class="w-3 h-3" />
+          <X class="w-3.5 h-3.5" />
         </button>
       {/if}
     </div>
 
-    <!-- Tags -->
-    <div class="flex flex-wrap items-center gap-1 text-xs font-mono">
-      {#each allTags as tag}
-        <button
-          onclick={() => (selectedTag = selectedTag === tag ? '' : tag)}
-          class={`px-2 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
-            selectedTag === tag
-              ? 'bg-sky-500 text-slate-950 font-semibold'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
-          }`}
-        >
-          #{tag}
-        </button>
-      {/each}
+    <div class="text-xs font-mono text-zinc-500">
+      {filteredPosts.length} 篇
     </div>
   </div>
 
-  <!-- Minimal List -->
-  <div class="divide-y divide-slate-900/90">
-    {#each filteredPosts as post (post.id)}
-      <a
-        href={`/posts/${post.id}`}
-        class="group flex items-baseline justify-between gap-4 py-3.5 hover:border-slate-800 transition-colors"
-      >
-        <div class="flex items-baseline gap-4 sm:gap-6 min-w-0">
-          <time class="text-xs font-mono text-slate-400 shrink-0 select-none">
-            {formatDate(post.pubDate)}
-          </time>
-          <span class="text-sm sm:text-base text-slate-300 font-normal group-hover:text-sky-300 transition-colors truncate">
-            {post.title}
-          </span>
+  <!-- Year-Grouped Article List -->
+  <div class="space-y-12">
+    {#each groupedByYear as [year, yearPosts] (year)}
+      <div>
+        <div class="text-xs font-mono font-bold text-zinc-500 mb-2 select-none">
+          {year}
         </div>
+        <div class="divide-y divide-zinc-900/80 border-t border-zinc-900/80">
+          {#each yearPosts as post (post.id)}
+            <a
+              href={`/posts/${post.id}`}
+              class="group flex items-baseline justify-between gap-4 py-3.5 hover:border-zinc-800 transition-colors"
+            >
+              <div class="flex items-baseline gap-4 sm:gap-6 min-w-0">
+                <time class="text-xs font-mono text-zinc-500 shrink-0 select-none">
+                  {formatDate(post.pubDate)}
+                </time>
+                <span class="text-sm sm:text-base text-zinc-300 font-normal group-hover:text-white transition-colors truncate">
+                  {post.title}
+                </span>
+              </div>
 
-        <div class="flex items-center gap-3 shrink-0 text-xs font-mono text-slate-400">
-          {#if post.tags[0]}
-            <span class="hidden sm:inline text-slate-400">
-              #{post.tags[0]}
-            </span>
-          {/if}
-          <span class="text-slate-400">
-            {post.readTime || '5 min'}
-          </span>
+              <div class="flex items-center gap-3 shrink-0 text-xs font-mono text-zinc-500">
+                {#if post.tags[0]}
+                  <span class="hidden sm:inline text-zinc-500 group-hover:text-zinc-400 transition-colors">
+                    #{post.tags[0]}
+                  </span>
+                {/if}
+                <span>
+                  {post.readTime || '5 min'}
+                </span>
+              </div>
+            </a>
+          {/each}
         </div>
-      </a>
+      </div>
     {/each}
   </div>
 
   {#if filteredPosts.length === 0}
-    <div class="py-12 text-center text-slate-600 font-mono text-xs">
+    <div class="py-16 text-center text-zinc-600 font-mono text-xs border border-dashed border-zinc-900 rounded-2xl">
       未找到匹配文章
     </div>
   {/if}

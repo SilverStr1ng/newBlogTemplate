@@ -11,6 +11,19 @@
   let currentX = 0;
   let currentY = 0;
 
+  // Dynamic interactive light rays emitted by user clicks
+  interface CustomLightRay {
+    id: number;
+    startX: number;
+    startY: number;
+    targetX: number;
+    targetY: number;
+    color: string;
+    life: number; // 1.0 -> 0.0
+    maxLife: number;
+    hue: number;
+  }
+
   // Dust particles floating in the light beam
   interface Particle {
     x: number;
@@ -21,7 +34,40 @@
     alpha: number;
     hue: number;
   }
+
+  const activeRays: CustomLightRay[] = [];
   const particles: Particle[] = [];
+
+  // Spectral colors for the dispersion fan
+  const spectralPalette = [
+    '#f43f5e', // Ruby Red
+    '#fb923c', // Orange
+    '#facc15', // Yellow
+    '#4ade80', // Green
+    '#38bdf8', // Cyan
+    '#6366f1', // Blue
+    '#a855f7', // Violet
+  ];
+
+  function spawnRay(x: number, y: number) {
+    if (!canvasRef) return;
+    const prismEntryX = canvasRef.width * 0.73;
+    const prismEntryY = canvasRef.height * 0.52;
+    const hues = [210, 280, 45, 160, 340];
+    const chosenHue = hues[Math.floor(Math.random() * hues.length)];
+
+    activeRays.push({
+      id: Date.now() + Math.random(),
+      startX: x,
+      startY: y,
+      targetX: prismEntryX,
+      targetY: prismEntryY,
+      color: `hsl(${chosenHue}, 90%, 65%)`,
+      life: 1.0,
+      maxLife: 1.0,
+      hue: chosenHue,
+    });
+  }
 
   onMount(() => {
     if (!canvasRef || !heroContainer) return;
@@ -38,7 +84,7 @@
     window.addEventListener('resize', resize);
 
     // Initialize floating light motes
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 45; i++) {
       particles.push({
         x: Math.random() * canvas.width,
         y: Math.random() * canvas.height,
@@ -53,11 +99,18 @@
     const handleMouseMove = (e: MouseEvent) => {
       if (!heroContainer) return;
       const rect = heroContainer.getBoundingClientRect();
-      // Bounded normalized coordinates: center is 0, range is [-1, 1]
       const nx = ((e.clientX - rect.left) / rect.width) * 2.0 - 1.0;
       const ny = ((e.clientY - rect.top) / rect.height) * 2.0 - 1.0;
       targetX = Math.max(-1, Math.min(1, nx));
       targetY = Math.max(-1, Math.min(1, ny));
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (!canvasRef) return;
+      const rect = canvasRef.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      spawnRay(clickX, clickY);
     };
 
     const handleMouseLeave = () => {
@@ -67,6 +120,7 @@
 
     window.addEventListener('mousemove', handleMouseMove);
     heroContainer.addEventListener('mouseleave', handleMouseLeave);
+    heroContainer.addEventListener('click', handleClick);
 
     const render = () => {
       animId = requestAnimationFrame(render);
@@ -76,7 +130,7 @@
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // Render drifting light motes
+      // 1. Render drifting cosmic particles
       for (const p of particles) {
         p.x += p.vx;
         p.y += p.vy;
@@ -91,9 +145,73 @@
         ctx.fill();
       }
 
-      // Interactive subtle specular glint on the prism facets based on mouse tilt
-      const glintX = canvas.width * 0.73 + currentX * 18;
-      const glintY = canvas.height * 0.52 + currentY * 14;
+      // 2. Render user-spawned interactive light rays & their custom refracted dispersion
+      const prismEntryX = canvas.width * 0.73 + currentX * 18;
+      const prismEntryY = canvas.height * 0.52 + currentY * 14;
+      const prismExitX = canvas.width * 0.55 + currentX * 12;
+      const prismExitY = canvas.height * 0.49 + currentY * 8;
+
+      for (let i = activeRays.length - 1; i >= 0; i--) {
+        const ray = activeRays[i];
+        ray.life -= 0.012; // Decay rate
+        if (ray.life <= 0) {
+          activeRays.splice(i, 1);
+          continue;
+        }
+
+        const alpha = Math.sin(ray.life * Math.PI) * 0.85;
+
+        // A. Incident ray from click point to prism entry
+        ctx.save();
+        ctx.strokeStyle = ray.color;
+        ctx.lineWidth = 2.5 * ray.life + 0.5;
+        ctx.shadowColor = ray.color;
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(ray.startX, ray.startY);
+        ctx.lineTo(prismEntryX, prismEntryY);
+        ctx.stroke();
+
+        // Source emitter ring at click point
+        ctx.beginPath();
+        ctx.arc(ray.startX, ray.startY, (1.0 - ray.life) * 20 + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = `hsla(${ray.hue}, 90%, 70%, ${alpha * 0.7})`;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // B. Internal crystal refraction inside prism
+        ctx.strokeStyle = `hsla(${ray.hue + 20}, 95%, 85%, ${alpha})`;
+        ctx.lineWidth = 3.5 * ray.life;
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.moveTo(prismEntryX, prismEntryY);
+        ctx.lineTo(prismExitX, prismExitY);
+        ctx.stroke();
+
+        // C. Refracted fan dispersion shooting out to the left
+        const fanLength = canvas.width * 0.55;
+        for (let b = 0; b < spectralPalette.length; b++) {
+          const spreadFactor = (b / (spectralPalette.length - 1) - 0.5) * 0.28;
+          const angle = Math.PI + spreadFactor + currentY * 0.05;
+          const endX = prismExitX + Math.cos(angle) * fanLength;
+          const endY = prismExitY + Math.sin(angle) * fanLength;
+
+          ctx.strokeStyle = spectralPalette[b];
+          ctx.lineWidth = (3.0 - Math.abs(spreadFactor) * 5) * ray.life + 0.5;
+          ctx.shadowColor = spectralPalette[b];
+          ctx.shadowBlur = 12;
+          ctx.globalAlpha = alpha * 0.75;
+          ctx.beginPath();
+          ctx.moveTo(prismExitX, prismExitY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      // 3. Ambient specular glint on the prism facets based on mouse tilt
+      const glintX = prismEntryX;
+      const glintY = prismEntryY;
       const glintGrad = ctx.createRadialGradient(glintX, glintY, 0, glintX, glintY, 120);
       glintGrad.addColorStop(0, 'rgba(255, 255, 255, 0.18)');
       glintGrad.addColorStop(0.3, 'rgba(180, 220, 255, 0.06)');
@@ -101,18 +219,6 @@
       ctx.fillStyle = glintGrad;
       ctx.beginPath();
       ctx.arc(glintX, glintY, 120, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Interactive shimmer along the dispersion exit face
-      const exitX = canvas.width * 0.55 + currentX * 12;
-      const exitY = canvas.height * 0.49 + currentY * 8;
-      const exitGrad = ctx.createRadialGradient(exitX, exitY, 0, exitX, exitY, 90);
-      exitGrad.addColorStop(0, 'rgba(140, 210, 255, 0.12)');
-      exitGrad.addColorStop(0.5, 'rgba(255, 180, 100, 0.04)');
-      exitGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = exitGrad;
-      ctx.beginPath();
-      ctx.arc(exitX, exitY, 90, 0, Math.PI * 2);
       ctx.fill();
     };
     render();
@@ -127,7 +233,7 @@
 
 <div
   bind:this={heroContainer}
-  class="relative w-full h-[520px] sm:h-[580px] md:h-[640px] bg-black overflow-hidden select-none flex items-center"
+  class="relative w-full h-[480px] sm:h-[540px] md:h-[600px] bg-black overflow-hidden select-none flex items-center cursor-crosshair"
   role="region"
   aria-label="rakuyou's labyrinth hero banner"
   style="perspective: 1200px;"
@@ -147,7 +253,7 @@
     />
   </div>
 
-  <!-- Interactive Light Glint & Particles Canvas -->
+  <!-- Interactive Light Glint, Pulse Rays & Particles Canvas -->
   <canvas
     bind:this={canvasRef}
     class="absolute inset-0 w-full h-full pointer-events-none z-10"
@@ -156,18 +262,23 @@
   <!-- Bottom seamless fade into page content -->
   <div class="absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black via-black/80 to-transparent pointer-events-none z-10"></div>
 
-  <!-- Foreground Content: Positioned in the upper-left quadrant to never obstruct the light beam -->
-  <div class="relative z-20 w-full max-w-6xl mx-auto px-6 sm:px-8 pointer-events-none">
-    <div class="max-w-xl pb-16">
-      <!-- Title: Upright, Elegant Serif -->
-      <h1 class="text-5xl sm:text-6xl md:text-7xl font-serif font-normal tracking-tight text-white leading-none drop-shadow-[0_2px_16px_rgba(0,0,0,0.9)]">
+  <!-- Foreground Content: Strict Single-Line Title and Description -->
+  <div class="relative z-20 w-full max-w-7xl mx-auto px-6 sm:px-8 pointer-events-none">
+    <div class="max-w-2xl pb-16">
+      <!-- Title: Upright, Elegant Serif strictly on ONE LINE -->
+      <h1 class="text-4xl sm:text-5xl md:text-6xl lg:text-[4.2rem] font-serif font-normal tracking-tight text-white whitespace-nowrap leading-none drop-shadow-[0_2px_16px_rgba(0,0,0,0.95)]">
         rakuyou’s labyrinth
       </h1>
 
       <!-- One-line clean description, zero fluff -->
-      <p class="mt-4 text-base sm:text-lg text-zinc-300/90 font-light tracking-wide truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
+      <p class="mt-4 text-sm sm:text-base text-zinc-300/90 font-light tracking-wide truncate drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]">
         A personal notebook on graphics, shaders & real-time optics.
       </p>
+
+      <!-- Minimal unobtrusive interaction hint -->
+      <span class="mt-3 inline-block text-[11px] font-mono text-zinc-500 tracking-wider">
+        [ CLICK CANVAS TO EMIT REFRACTING LIGHT RAYS ]
+      </span>
     </div>
   </div>
 </div>

@@ -16,20 +16,20 @@ const serializedPosts = sortedPosts.map((p) => ({
   tags: p.data.tags,
   readTime: p.data.readTime,
 }));
-
-const allTags = Array.from(new Set(allPosts.flatMap((p) => p.data.tags))).sort();
 ---
 
 <Layout
-  title="文章 — vGPU::Light"
-  description="着色器与实时图形技术文章。"
+  title="文章 — rakuyou's labyrinth"
+  description="着色器与实时图形技术文章归档。"
 >
-  <div class="max-w-4xl mx-auto px-4 py-8">
-    <h1 class="text-lg font-mono font-semibold tracking-wider text-slate-300 uppercase mb-6">
-      文章 / WRITINGS ({allPosts.length})
-    </h1>
+  <div class="max-w-6xl mx-auto px-6 sm:px-8 py-12">
+    <div class="pb-3 border-b border-zinc-800 mb-8">
+      <h1 class="text-xs font-mono font-semibold tracking-wider text-zinc-400 uppercase">
+        全部文章 / WRITINGS
+      </h1>
+    </div>
 
     <!-- Interactive Client List Island -->
-    <InteractivePostList client:load posts={serializedPosts} allTags={allTags} />
+    <InteractivePostList client:load posts={serializedPosts} />
   </div>
 </Layout>
