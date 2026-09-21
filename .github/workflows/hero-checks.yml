@@ -1,0 +1,39 @@
+name: Hero checks
+
+on:
+  pull_request:
+    paths:
+      - 'src/components/LightHero.svelte'
+      - 'src/lib/hero/**'
+      - 'tests/hero*.mjs'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/hero-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hero-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10 --activate
+      - name: Install the existing dependency lockfile
+        run: pnpm install --frozen-lockfile
+      - name: Scene and GPU resource lifecycle tests
+        run: node --test tests/hero*.test.mjs
+      - name: Astro production build
+        run: pnpm build
