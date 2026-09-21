@@ -101,32 +101,256 @@
     window.addEventListener('mousemove', handlePointerMove);
     window.addEventListener('mouseup', handlePointerUp);
 
+    // =========================================================================
+    // LIVING OPTICAL APPARATUS: KINEMATIC APERTURES, RAILS, ROTATORS & BAFFLES
+    // =========================================================================
+    interface ElementPose {
+      x: number;
+      y: number;
+      angle: number;
+      length: number;
+      gap: number;
+    }
+
+    interface OpticalElement {
+      id: string;
+      name: string;
+      type: 'SLIDE' | 'ROTATE' | 'IRIS_SPLIT' | 'TELESCOPE';
+      rail?: [number, number, number, number]; // [x0, y0, x1, y1] for linear guide slot
+      pivot?: [number, number];                // [px, py] for precision rotary bearing
+      poses: ElementPose[];                    // 4 curated architectural states
+    }
+
+    const PRESET_NAMES = [
+      'RADIAL COLLIMATOR // CROSS-BEAM APERTURES',
+      'ORTHOGONAL MATRIX // REFLECTIVE CASSETTES',
+      'DIAGONAL WAVEGUIDE // PRISMATIC DEFLECTORS',
+      'ASYMMETRIC CAVITY // POLARIZED RESONATOR',
+    ];
+
+    // 16 precision optical components spanning the 4 kinematic mechanisms:
+    // - SLIDE (滑动): 4 linear rail sliders with visible mechanical guide tracks
+    // - ROTATE (旋转): 6 rotary galvos / shutters on precision pivot bearings
+    // - IRIS_SPLIT (开合): 3 dual-leaf parting aperture gates
+    // - TELESCOPE (伸缩): 3 variable-length collimating baffles
+    const opticalApparatus: OpticalElement[] = [
+      // 1. Inner North Iris Gate (开合/IRIS)
+      {
+        id: 'iris_north',
+        name: 'Inner North Aperture Gate',
+        type: 'IRIS_SPLIT',
+        poses: [
+          { x: 0, y: -0.16, angle: 0, length: 0.10, gap: 0.08 },
+          { x: 0, y: -0.16, angle: 0, length: 0.10, gap: 0.005 },
+          { x: 0, y: -0.16, angle: 0, length: 0.10, gap: 0.045 },
+          { x: 0, y: -0.16, angle: 0, length: 0.10, gap: 0.095 },
+        ],
+      },
+      // 2. Inner South Iris Gate (开合/IRIS)
+      {
+        id: 'iris_south',
+        name: 'Inner South Aperture Gate',
+        type: 'IRIS_SPLIT',
+        poses: [
+          { x: 0, y: 0.16, angle: 0, length: 0.10, gap: 0.08 },
+          { x: 0, y: 0.16, angle: 0, length: 0.10, gap: 0.005 },
+          { x: 0, y: 0.16, angle: 0, length: 0.10, gap: 0.01 },
+          { x: 0, y: 0.16, angle: 0, length: 0.10, gap: 0.005 },
+        ],
+      },
+      // 3. Inner East Rotary Shutter (旋转/ROTATE)
+      {
+        id: 'rot_east',
+        name: 'Inner East Shutter Blade',
+        type: 'ROTATE',
+        pivot: [0.17, 0.0],
+        poses: [
+          { x: 0.17, y: 0.0, angle: 0, length: 0.16, gap: 0 },
+          { x: 0.17, y: 0.0, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: 0.17, y: 0.0, angle: Math.PI / 4, length: 0.16, gap: 0 },
+          { x: 0.17, y: 0.0, angle: Math.PI / 2, length: 0.16, gap: 0 },
+        ],
+      },
+      // 4. Inner West Rotary Shutter (旋转/ROTATE)
+      {
+        id: 'rot_west',
+        name: 'Inner West Shutter Blade',
+        type: 'ROTATE',
+        pivot: [-0.17, 0.0],
+        poses: [
+          { x: -0.17, y: 0.0, angle: 0, length: 0.16, gap: 0 },
+          { x: -0.17, y: 0.0, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: -0.17, y: 0.0, angle: -Math.PI / 4, length: 0.16, gap: 0 },
+          { x: -0.17, y: 0.0, angle: 0, length: 0.16, gap: 0 },
+        ],
+      },
+      // 5. Upper-Left Linear Rail Slider (滑动/SLIDE)
+      {
+        id: 'slide_ul',
+        name: 'Upper-Left Rail Barrier',
+        type: 'SLIDE',
+        rail: [-0.34, -0.26, -0.14, -0.26],
+        poses: [
+          { x: -0.32, y: -0.26, angle: 0, length: 0.16, gap: 0 },
+          { x: -0.16, y: -0.26, angle: 0, length: 0.16, gap: 0 },
+          { x: -0.24, y: -0.26, angle: 0, length: 0.16, gap: 0 },
+          { x: -0.34, y: -0.26, angle: 0, length: 0.16, gap: 0 },
+        ],
+      },
+      // 6. Upper-Right Linear Rail Slider (滑动/SLIDE)
+      {
+        id: 'slide_ur',
+        name: 'Upper-Right Rail Barrier',
+        type: 'SLIDE',
+        rail: [0.28, -0.32, 0.28, -0.12],
+        poses: [
+          { x: 0.28, y: -0.28, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: 0.28, y: -0.14, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: 0.28, y: -0.22, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: 0.28, y: -0.14, angle: Math.PI / 2, length: 0.16, gap: 0 },
+        ],
+      },
+      // 7. Lower-Right Linear Rail Slider (滑动/SLIDE)
+      {
+        id: 'slide_lr',
+        name: 'Lower-Right Rail Barrier',
+        type: 'SLIDE',
+        rail: [0.14, 0.26, 0.34, 0.26],
+        poses: [
+          { x: 0.32, y: 0.26, angle: 0, length: 0.16, gap: 0 },
+          { x: 0.16, y: 0.26, angle: 0, length: 0.16, gap: 0 },
+          { x: 0.24, y: 0.26, angle: 0, length: 0.16, gap: 0 },
+          { x: 0.20, y: 0.26, angle: 0, length: 0.16, gap: 0 },
+        ],
+      },
+      // 8. Lower-Left Linear Rail Slider (滑动/SLIDE)
+      {
+        id: 'slide_ll',
+        name: 'Lower-Left Rail Barrier',
+        type: 'SLIDE',
+        rail: [-0.28, 0.12, -0.28, 0.32],
+        poses: [
+          { x: -0.28, y: 0.28, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: -0.28, y: 0.14, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: -0.28, y: 0.20, angle: Math.PI / 2, length: 0.16, gap: 0 },
+          { x: -0.28, y: 0.30, angle: Math.PI / 2, length: 0.16, gap: 0 },
+        ],
+      },
+      // 9. North-West Galvo Deflector (旋转/ROTATE)
+      {
+        id: 'galvo_nw',
+        name: 'North-West Rotary Galvo',
+        type: 'ROTATE',
+        pivot: [-0.22, -0.17],
+        poses: [
+          { x: -0.22, y: -0.17, angle: 0, length: 0.14, gap: 0 },
+          { x: -0.22, y: -0.17, angle: Math.PI / 2, length: 0.14, gap: 0 },
+          { x: -0.22, y: -0.17, angle: Math.PI / 4, length: 0.14, gap: 0 },
+          { x: -0.22, y: -0.17, angle: -Math.PI / 4, length: 0.14, gap: 0 },
+        ],
+      },
+      // 10. North-East Galvo Deflector (旋转/ROTATE)
+      {
+        id: 'galvo_ne',
+        name: 'North-East Rotary Galvo',
+        type: 'ROTATE',
+        pivot: [0.22, -0.17],
+        poses: [
+          { x: 0.22, y: -0.17, angle: 0, length: 0.14, gap: 0 },
+          { x: 0.22, y: -0.17, angle: Math.PI / 2, length: 0.14, gap: 0 },
+          { x: 0.22, y: -0.17, angle: -Math.PI / 4, length: 0.14, gap: 0 },
+          { x: 0.22, y: -0.17, angle: Math.PI / 4, length: 0.14, gap: 0 },
+        ],
+      },
+      // 11. South-East Galvo Deflector (旋转/ROTATE)
+      {
+        id: 'galvo_se',
+        name: 'South-East Rotary Galvo',
+        type: 'ROTATE',
+        pivot: [0.22, 0.17],
+        poses: [
+          { x: 0.22, y: 0.17, angle: 0, length: 0.14, gap: 0 },
+          { x: 0.22, y: 0.17, angle: Math.PI / 2, length: 0.14, gap: 0 },
+          { x: 0.22, y: 0.17, angle: Math.PI / 4, length: 0.14, gap: 0 },
+          { x: 0.22, y: 0.17, angle: -Math.PI / 4, length: 0.14, gap: 0 },
+        ],
+      },
+      // 12. South-West Galvo Deflector (旋转/ROTATE)
+      {
+        id: 'galvo_sw',
+        name: 'South-West Rotary Galvo',
+        type: 'ROTATE',
+        pivot: [-0.22, 0.17],
+        poses: [
+          { x: -0.22, y: 0.17, angle: 0, length: 0.14, gap: 0 },
+          { x: -0.22, y: 0.17, angle: Math.PI / 2, length: 0.14, gap: 0 },
+          { x: -0.22, y: 0.17, angle: -Math.PI / 4, length: 0.14, gap: 0 },
+          { x: -0.22, y: 0.17, angle: Math.PI / 4, length: 0.14, gap: 0 },
+        ],
+      },
+      // 13. Outer North Telescoping Baffle (伸缩/TELESCOPE)
+      {
+        id: 'tele_north',
+        name: 'Outer North Telescoping Baffle',
+        type: 'TELESCOPE',
+        poses: [
+          { x: 0.0, y: -0.36, angle: 0, length: 0.14, gap: 0 },
+          { x: 0.0, y: -0.36, angle: 0, length: 0.36, gap: 0 },
+          { x: 0.0, y: -0.36, angle: 0, length: 0.22, gap: 0 },
+          { x: 0.0, y: -0.36, angle: 0, length: 0.16, gap: 0 },
+        ],
+      },
+      // 14. Outer South Telescoping Baffle (伸缩/TELESCOPE)
+      {
+        id: 'tele_south',
+        name: 'Outer South Telescoping Baffle',
+        type: 'TELESCOPE',
+        poses: [
+          { x: 0.0, y: 0.36, angle: 0, length: 0.14, gap: 0 },
+          { x: 0.0, y: 0.36, angle: 0, length: 0.36, gap: 0 },
+          { x: 0.0, y: 0.36, angle: 0, length: 0.26, gap: 0 },
+          { x: 0.0, y: 0.36, angle: 0, length: 0.34, gap: 0 },
+        ],
+      },
+      // 15. Outer West Iris Portal (开合/IRIS)
+      {
+        id: 'iris_west',
+        name: 'Outer West Portal Iris',
+        type: 'IRIS_SPLIT',
+        poses: [
+          { x: -0.38, y: 0.0, angle: Math.PI / 2, length: 0.12, gap: 0.06 },
+          { x: -0.38, y: 0.0, angle: Math.PI / 2, length: 0.12, gap: 0.16 },
+          { x: -0.38, y: 0.0, angle: Math.PI / 2, length: 0.12, gap: 0.02 },
+          { x: -0.38, y: 0.0, angle: Math.PI / 2, length: 0.12, gap: 0.18 },
+        ],
+      },
+      // 16. Outer East Telescoping Baffle (伸缩/TELESCOPE)
+      {
+        id: 'tele_east',
+        name: 'Outer East Telescoping Baffle',
+        type: 'TELESCOPE',
+        poses: [
+          { x: 0.38, y: 0.0, angle: Math.PI / 2, length: 0.12, gap: 0 },
+          { x: 0.38, y: 0.0, angle: Math.PI / 2, length: 0.32, gap: 0 },
+          { x: 0.38, y: 0.0, angle: Math.PI / 2, length: 0.20, gap: 0 },
+          { x: 0.38, y: 0.0, angle: Math.PI / 2, length: 0.20, gap: 0 },
+        ],
+      },
+    ];
+
     const startTime = performance.now();
     let lastFrameTime = startTime;
     let mazeTime = 0;
-    let nextRebuild = 10 + Math.random() * 10;
-    let rebuildStart = 0;
-    let rebuildDuration = 1.5;
-    let rebuilding = false;
-    let expanded = false;
 
-    // Persistent wall identities: change their poses, never replace the maze mid-frame.
-    const walls = [
-      { x: -0.38, y: -0.30, angle: 0, length: 0.24 },
-      { x: -0.12, y: -0.34, angle: 0, length: 0.20 },
-      { x: 0.18, y: -0.30, angle: 0, length: 0.26 },
-      { x: 0.40, y: -0.16, angle: Math.PI / 2, length: 0.22 },
-      { x: 0.34, y: 0.12, angle: Math.PI / 2, length: 0.22 },
-      { x: 0.20, y: 0.32, angle: 0, length: 0.24 },
-      { x: -0.10, y: 0.34, angle: 0, length: 0.20 },
-      { x: -0.38, y: 0.22, angle: Math.PI / 2, length: 0.20 },
-      { x: -0.24, y: 0.02, angle: Math.PI / 2, length: 0.20 },
-      { x: 0.04, y: -0.18, angle: 0, length: 0.18 },
-      { x: 0.22, y: 0.02, angle: Math.PI / 2, length: 0.18 },
-      { x: -0.02, y: 0.18, angle: 0, length: 0.20 },
-    ];
-    let fromPoses = walls.map(() => 0);
-    let toPoses = [...fromPoses];
+    // Presets & Timing state:
+    // Stays stable for 10~20s, then enters a 1~2s smooth mechanical reorganization,
+    // settling into a completely new light field for the next 10~20s.
+    let currPreset = 0;
+    let targetPreset = 0;
+    let reorganizing = false;
+    let reorgStart = 0;
+    let reorgDuration = 1.5;
+    let nextReorgTime = 12 + Math.random() * 6; // First stable duration: 12~18s
 
     const resumeClock = () => { lastFrameTime = performance.now(); };
     document.addEventListener('visibilitychange', resumeClock);
@@ -135,29 +359,45 @@
       animId = requestAnimationFrame(render);
       const now = performance.now();
       const elapsed = (now - startTime) * 0.001;
-      if (!document.hidden) mazeTime += (now - lastFrameTime) * 0.001;
+      if (!document.hidden) {
+        // Clamp frame delta to avoid jump on tab return
+        mazeTime += Math.min(0.08, (now - lastFrameTime) * 0.001);
+      }
       lastFrameTime = now;
 
-      if (!rebuilding && mazeTime >= nextRebuild) {
-        rebuilding = true;
-        rebuildStart = mazeTime;
-        rebuildDuration = 1 + Math.random();
-        nextRebuild = rebuildStart + 10 + Math.random() * 10;
-        expanded = !expanded;
-        fromPoses = [...toPoses];
-        toPoses = walls.map(() => expanded ? 0.65 + Math.random() * 0.35 : 0);
+      // -----------------------------------------------------------------------
+      // STATE MACHINE: 10~20s Stable Hold -> 1~2s Reorganization -> 10~20s Stable Hold
+      // -----------------------------------------------------------------------
+      if (!reorganizing && mazeTime >= nextReorgTime) {
+        reorganizing = true;
+        reorgStart = mazeTime;
+        reorgDuration = 1.3 + Math.random() * 0.5; // Reorganization lasts 1.3s ~ 1.8s (strictly 1~2s)
+        currPreset = targetPreset;
+        // Select a different preset to create a genuinely novel optical configuration
+        targetPreset = (currPreset + 1 + Math.floor(Math.random() * (PRESET_NAMES.length - 1))) % PRESET_NAMES.length;
+        // After reorg finishes, stay completely stable for 10~20s so user can observe new light field
+        nextReorgTime = reorgStart + reorgDuration + 10 + Math.random() * 10;
       }
-      const progress = rebuilding ? Math.min(1, (mazeTime - rebuildStart) / rebuildDuration) : 1;
-      // Quintic easing brings each mechanism to rest without a velocity snap.
-      const eased = progress ** 3 * (progress * (progress * 6 - 15) + 10);
-      if (progress === 1) rebuilding = false;
+
+      let progress = 1;
+      let eased = 1;
+      if (reorganizing) {
+        progress = Math.min(1, (mazeTime - reorgStart) / reorgDuration);
+        // Quintic smoothstep easing: smooth zero-acceleration start & gentle mechanical arrival
+        // S_5(t) = t^3 * (t * (6t - 15) + 10)
+        eased = progress ** 3 * (progress * (progress * 6 - 15) + 10);
+        if (progress >= 1) {
+          reorganizing = false;
+          currPreset = targetPreset;
+        }
+      }
 
       const w = canvas.width;
       const h = canvas.height;
 
       ctx.clearRect(0, 0, w, h);
 
-      // 1. Dark Architectural Floor Grid (from vgpu grid_albedo: 48px cell, 1px line width)
+      // 1. Dark Architectural Floor Grid
       const cellSize = 48;
       ctx.save();
       ctx.fillStyle = '#06070a';
@@ -180,38 +420,103 @@
         ctx.lineTo(w, y);
         ctx.stroke();
       }
+      ctx.restore();
 
-      // 2. Element Coordinates
+      // 2. Element Coordinates & Apparatus Kinematic Solvers
       const centerX = w * 0.58;
       const centerY = h * 0.48;
       const diamondScale = Math.min(w, h) * 0.125;
       const mazeScale = Math.min(w * 0.88, h);
-      const mazeSegments = walls.flatMap((wall, i) => {
-        const pose = fromPoses[i] + (toPoses[i] - fromPoses[i]) * eased;
-        let { x, y, angle, length } = wall;
-        const motion = i % 4;
-        if (motion === 0) x += pose * 0.10; // Sliding rail
-        if (motion === 1) angle += pose * Math.PI / 2; // Rotary partition
-        if (motion === 3) length *= 1 - pose * 0.65; // Telescoping wall
-        const dx = Math.cos(angle), dy = Math.sin(angle);
-        const point = (offset: number) => ({
-          x: centerX + (x + dx * offset) * mazeScale,
-          y: centerY + (y + dy * offset) * mazeScale,
-        });
-        const half = length / 2;
-        if (motion === 2) {
-          // Two rigid leaves slide apart to open a passage.
-          const gap = pose * 0.07;
-          return [
-            { a: point(-half - gap), b: point(-gap) },
-            { a: point(gap), b: point(half + gap) },
-          ];
+
+      // Render Mechanical Guide Rails on the floor before walls
+      for (const el of opticalApparatus) {
+        if (el.rail) {
+          const r0x = centerX + el.rail[0] * mazeScale;
+          const r0y = centerY + el.rail[1] * mazeScale;
+          const r1x = centerX + el.rail[2] * mazeScale;
+          const r1y = centerY + el.rail[3] * mazeScale;
+
+          ctx.save();
+          // Rail slot track
+          ctx.beginPath();
+          ctx.moveTo(r0x, r0y);
+          ctx.lineTo(r1x, r1y);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // High-precision millimeter indicator track
+          ctx.beginPath();
+          ctx.moveTo(r0x, r0y);
+          ctx.lineTo(r1x, r1y);
+          ctx.strokeStyle = reorganizing ? 'rgba(56, 189, 248, 0.28)' : 'rgba(56, 189, 248, 0.12)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 4]);
+          ctx.stroke();
+
+          // Limit stops
+          const rAngle = Math.atan2(r1y - r0y, r1x - r0x);
+          const px = -Math.sin(rAngle) * 4;
+          const py = Math.cos(rAngle) * 4;
+          ctx.setLineDash([]);
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(r0x - px, r0y - py);
+          ctx.lineTo(r0x + px, r0y + py);
+          ctx.moveTo(r1x - px, r1y - py);
+          ctx.lineTo(r1x + px, r1y + py);
+          ctx.stroke();
+          ctx.restore();
         }
-        return [{ a: point(-half), b: point(half) }];
-      });
+      }
+
+      // Interpolate each element's pose between current and target state
+      interface Segment {
+        a: { x: number; y: number };
+        b: { x: number; y: number };
+        type: string;
+      }
+      const apparatusSegments: Segment[] = [];
+
+      for (const el of opticalApparatus) {
+        const pA = el.poses[currPreset];
+        const pB = el.poses[targetPreset];
+
+        // Shortest arc interpolation for angles
+        let dAngle = pB.angle - pA.angle;
+        while (dAngle > Math.PI) dAngle -= Math.PI * 2;
+        while (dAngle < -Math.PI) dAngle += Math.PI * 2;
+
+        const curX = pA.x + (pB.x - pA.x) * eased;
+        const curY = pA.y + (pB.y - pA.y) * eased;
+        const curAngle = pA.angle + dAngle * eased;
+        const curLength = pA.length + (pB.length - pA.length) * eased;
+        const curGap = pA.gap + (pB.gap - pA.gap) * eased;
+
+        const dx = Math.cos(curAngle);
+        const dy = Math.sin(curAngle);
+        const toScreen = (off: number) => ({
+          x: centerX + (curX + dx * off) * mazeScale,
+          y: centerY + (curY + dy * off) * mazeScale,
+        });
+
+        if (el.type === 'IRIS_SPLIT') {
+          // Dual leaves sliding apart symmetrically (开合)
+          const leafLen = curLength;
+          apparatusSegments.push(
+            { a: toScreen(-curGap - leafLen), b: toScreen(-curGap), type: el.type },
+            { a: toScreen(curGap), b: toScreen(curGap + leafLen), type: el.type }
+          );
+        } else {
+          // SLIDE (滑动), ROTATE (旋转), TELESCOPE (伸缩)
+          const half = curLength / 2;
+          apparatusSegments.push({ a: toScreen(-half), b: toScreen(half), type: el.type });
+        }
+      }
 
       // Fixed Neon Occluders/Emitters:
-      // Green neon bar: positioned lower-left, away from the title area
+      // Green neon bar: positioned lower-left
       const g0 = { x: centerX - w * 0.28, y: centerY + h * 0.28 };
       const g1 = { x: centerX - w * 0.14, y: centerY - h * 0.02 };
 
@@ -233,8 +538,16 @@
         const dist0 = Math.hypot(d0x, d0y) || 1;
         const dist1 = Math.hypot(d1x, d1y) || 1;
 
-        const shadowP0 = { x: barX0 + (d0x / dist0) * length, y: barY0 + (d0y / dist0) * length };
-        const shadowP1 = { x: barX1 + (d1x / dist1) * length, y: barY1 + (d1y / dist1) * length };
+        // Soft penumbra divergence
+        const penumbraSpread = 1.06;
+        const shadowP0 = {
+          x: barX0 + (d0x / dist0) * length * penumbraSpread,
+          y: barY0 + (d0y / dist0) * length * penumbraSpread
+        };
+        const shadowP1 = {
+          x: barX1 + (d1x / dist1) * length * penumbraSpread,
+          y: barY1 + (d1y / dist1) * length * penumbraSpread
+        };
 
         ctx.save();
         ctx.beginPath();
@@ -244,12 +557,14 @@
         ctx.lineTo(shadowP0.x, shadowP0.y);
         ctx.closePath();
 
-        const shadowGrad = ctx.createLinearGradient(
-          (barX0 + barX1) / 2, (barY0 + barY1) / 2,
-          (shadowP0.x + shadowP1.x) / 2, (shadowP0.y + shadowP1.y) / 2
-        );
-        shadowGrad.addColorStop(0, `rgba(5, 6, 9, ${0.48 * intensity})`);
-        shadowGrad.addColorStop(0.5, `rgba(5, 6, 9, ${0.22 * intensity})`);
+        const midBarX = (barX0 + barX1) * 0.5;
+        const midBarY = (barY0 + barY1) * 0.5;
+        const midShadowX = (shadowP0.x + shadowP1.x) * 0.5;
+        const midShadowY = (shadowP0.y + shadowP1.y) * 0.5;
+
+        const shadowGrad = ctx.createLinearGradient(midBarX, midBarY, midShadowX, midShadowY);
+        shadowGrad.addColorStop(0, `rgba(5, 6, 9, ${0.52 * intensity})`);
+        shadowGrad.addColorStop(0.45, `rgba(5, 6, 9, ${0.24 * intensity})`);
         shadowGrad.addColorStop(1, 'rgba(5, 6, 9, 0.0)');
         ctx.fillStyle = shadowGrad;
         ctx.fill();
@@ -293,17 +608,21 @@
       // D. Shadows of Fixed Bars Cast by the Central Diamond
       castOcclusionShadow(centerX, centerY, g0.x, g0.y, g1.x, g1.y, w * 0.36, 1.0);
       castOcclusionShadow(centerX, centerY, p0.x, p0.y, p1.x, p1.y, w * 0.36, 1.0);
-      const castMazeShadows = (x: number, y: number, intensity: number) => {
-        for (const { a, b } of mazeSegments) {
+
+      // Cast dynamic occlusion shadows from moving apparatus components
+      const castApparatusShadows = (x: number, y: number, intensity: number) => {
+        for (const { a, b } of apparatusSegments) {
           castOcclusionShadow(x, y, a.x, a.y, b.x, b.y, mazeScale * 0.65, intensity);
         }
       };
-      castMazeShadows(centerX, centerY, 0.85);
-      castMazeShadows((g0.x + g1.x) / 2, (g0.y + g1.y) / 2, 0.4);
-      castMazeShadows((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 0.4);
+
+      // Diamond light casts primary shadow channels through the living apparatus
+      castApparatusShadows(centerX, centerY, 0.88);
+      // Secondary bounce shadows from fixed neon bars
+      castApparatusShadows((g0.x + g1.x) / 2, (g0.y + g1.y) / 2, 0.35);
+      castApparatusShadows((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 0.35);
 
       // --- 4. USER DRAWN LIGHT STROKES: FULL MUTUAL RADIANCE CASCADES INTERACTION ---
-      // User strokes illuminate the room AND cast shadows when hitting occluders!
       let userIlluminatedGreenGlow: { color: string; intensity: number } | null = null;
       let userIlluminatedPurpleGlow: { color: string; intensity: number } | null = null;
 
@@ -328,10 +647,9 @@
         bleedGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = bleedGrad;
         ctx.fillRect(0, 0, w, h);
-        castMazeShadows(midX, midY, s.life * 0.45);
+        castApparatusShadows(midX, midY, s.life * 0.45);
 
         // B. Light bounce onto the Green Bar and Purple Bar:
-        // User strokes illuminate the facing side of the neon bars!
         const distToGreen = Math.hypot(midX - (g0.x + g1.x) / 2, midY - (g0.y + g1.y) / 2);
         if (distToGreen < w * 0.35) {
           const bounceStrength = (1.0 - distToGreen / (w * 0.35)) * s.life;
@@ -372,26 +690,100 @@
         ctx.restore();
       }
 
-      // The visible walls and their shadows share the same interpolated endpoints.
+      // --- 5. RENDER LIVING OPTICAL APPARATUS: WALLS, BEARINGS, DICHROIC RIM LIGHTING ---
       ctx.save();
-      ctx.lineCap = 'butt';
-      for (const { a, b } of mazeSegments) {
+      ctx.lineCap = 'round';
+
+      for (const { a, b } of apparatusSegments) {
+        // A. Heavy Anodized Titanium Wall Armor
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
-        ctx.lineWidth = 7;
-        ctx.strokeStyle = '#10191e';
+        ctx.lineWidth = 6.5;
+        ctx.strokeStyle = '#090e15';
         ctx.stroke();
-        const edge = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
-        edge.addColorStop(0, 'rgba(94, 207, 170, 0.65)');
-        edge.addColorStop(1, 'rgba(172, 143, 213, 0.65)');
-        ctx.lineWidth = 1.5;
-        ctx.strokeStyle = edge;
+
+        // B. Metallic Core Plate
+        ctx.lineWidth = 2.8;
+        ctx.strokeStyle = '#182433';
+        ctx.stroke();
+
+        // C. Illuminated Specular Rim facing Central Radiant Diamond
+        const segDx = b.x - a.x;
+        const segDy = b.y - a.y;
+        const segLen = Math.hypot(segDx, segDy) || 1;
+        const nx = -segDy / segLen;
+        const ny = segDx / segLen;
+        const midSegX = (a.x + b.x) * 0.5;
+        const midSegY = (a.y + b.y) * 0.5;
+
+        // Normal facing vector test against diamond light
+        const toDiamondX = centerX - midSegX;
+        const toDiamondY = centerY - midSegY;
+        const dotDiamond = nx * toDiamondX + ny * toDiamondY;
+        const facingSign = dotDiamond >= 0 ? 1 : -1;
+
+        const rimOffX = nx * facingSign * 1.8;
+        const rimOffY = ny * facingSign * 1.8;
+
+        ctx.beginPath();
+        ctx.moveTo(a.x + rimOffX, a.y + rimOffY);
+        ctx.lineTo(b.x + rimOffX, b.y + rimOffY);
+        ctx.lineWidth = 1.3;
+        ctx.strokeStyle = 'rgba(255, 248, 230, 0.75)';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 4;
+        ctx.stroke();
+
+        // D. Top Micro Dichroic Laser-Etched Coating (Cyan -> Purple -> Emerald)
+        const edgeGrad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+        edgeGrad.addColorStop(0, 'rgba(56, 189, 248, 0.85)');
+        edgeGrad.addColorStop(0.5, 'rgba(192, 132, 252, 0.85)');
+        edgeGrad.addColorStop(1, 'rgba(52, 211, 153, 0.85)');
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineWidth = 1.0;
+        ctx.strokeStyle = edgeGrad;
+        ctx.shadowBlur = 0;
         ctx.stroke();
       }
       ctx.restore();
 
-      // --- 5. RENDER FIXED NEON EMITTER BARS (With Light Bounce from User Strokes!) ---
+      // Render Pivot Bearings with Kinematic Energy Actuators
+      for (const el of opticalApparatus) {
+        if (el.pivot) {
+          const pvx = centerX + el.pivot[0] * mazeScale;
+          const pvy = centerY + el.pivot[1] * mazeScale;
+
+          ctx.save();
+          // Outer bearing collar
+          ctx.beginPath();
+          ctx.arc(pvx, pvy, 4.5, 0, Math.PI * 2);
+          ctx.fillStyle = '#080d12';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Center jewel / LED actuator
+          ctx.beginPath();
+          ctx.arc(pvx, pvy, 2, 0, Math.PI * 2);
+          if (reorganizing) {
+            const pulse = 0.5 + 0.5 * Math.sin(mazeTime * 18);
+            ctx.fillStyle = `rgba(56, 189, 248, ${0.7 + 0.3 * pulse})`;
+            ctx.shadowColor = '#38bdf8';
+            ctx.shadowBlur = 8;
+          } else {
+            ctx.fillStyle = 'rgba(220, 245, 255, 0.5)';
+            ctx.shadowBlur = 0;
+          }
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // --- 6. RENDER FIXED NEON EMITTER BARS ---
       // A. Green Neon Bar
       ctx.save();
       ctx.strokeStyle = '#22e577';
@@ -409,7 +801,7 @@
       ctx.shadowBlur = 6;
       ctx.stroke();
 
-      // If user drew a stroke near the green bar, render color bounce highlight on the bar!
+      // Color bounce highlight from user strokes
       if (userIlluminatedGreenGlow && userIlluminatedGreenGlow.intensity > 0.05) {
         ctx.strokeStyle = userIlluminatedGreenGlow.color;
         ctx.lineWidth = 7.0;
@@ -437,7 +829,7 @@
       ctx.shadowBlur = 6;
       ctx.stroke();
 
-      // If user drew a stroke near the purple bar, render color bounce highlight on the bar!
+      // Color bounce highlight from user strokes
       if (userIlluminatedPurpleGlow && userIlluminatedPurpleGlow.intensity > 0.05) {
         ctx.strokeStyle = userIlluminatedPurpleGlow.color;
         ctx.lineWidth = 7.0;
@@ -448,7 +840,7 @@
       }
       ctx.restore();
 
-      // --- 6. RENDER CENTRAL 3D GLB DIAMOND EMITTER (From dflat-D9eRXupj.glb) ---
+      // --- 7. RENDER CENTRAL 3D GLB DIAMOND EMITTER (From dflat-D9eRXupj.glb) ---
       const rotX = Math.sin(elapsed * 0.4) * 0.14 + (pointerY - 0.5) * 0.32;
       const rotY = elapsed * 0.42 + (pointerX - 0.5) * 0.7;
 
@@ -553,7 +945,35 @@
 
       ctx.restore();
 
-      // 7. Subtle Hover Indicator
+      // --- 8. TELEMETRY & LIVING OPTICAL APPARATUS HUD READOUT ---
+      ctx.save();
+      const hudX = w - 28;
+      const hudY = h - 22;
+      ctx.textAlign = 'right';
+      ctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace';
+
+      if (reorganizing) {
+        const pct = Math.floor(progress * 100);
+        ctx.fillStyle = '#38bdf8';
+        ctx.shadowColor = '#38bdf8';
+        ctx.shadowBlur = 8;
+        ctx.fillText(`● RECONFIGURING [${pct}%] // KINEMATIC MORPH`, hudX, hudY - 14);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`TARGET: ${PRESET_NAMES[targetPreset]}`, hudX, hudY);
+      } else {
+        const remainingSec = Math.max(0, nextReorgTime - mazeTime).toFixed(1);
+        ctx.fillStyle = 'rgba(34, 229, 119, 0.9)';
+        ctx.shadowColor = '#22e577';
+        ctx.shadowBlur = 6;
+        ctx.fillText(`● APPARATUS STABLE // NEXT MORPH IN ${remainingSec}s`, hudX, hudY - 14);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.38)';
+        ctx.shadowBlur = 0;
+        ctx.fillText(`ACTIVE: ${PRESET_NAMES[currPreset]}`, hudX, hudY);
+      }
+      ctx.restore();
+
+      // 9. Subtle Hover Indicator
       if (pointerX > 0 && pointerY > 0 && !isPointerDown) {
         const px = pointerX * w;
         const py = pointerY * h;
@@ -564,8 +984,6 @@
         ctx.fill();
         ctx.restore();
       }
-
-      ctx.restore();
     };
     render();
 
