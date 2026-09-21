@@ -47,12 +47,12 @@ test('every transition has finite bounded geometry and keeps the diamond chamber
     t.preset = preset; t.target = (preset + 1) % 4; t.phase = 'morph';
     for (let step = 0; step <= 100; step++) {
       t.elapsed = step / 100 * SETTINGS.morph;
-      const walls = wallSegments(t); assert.equal(walls.length, 20);
+      const walls = wallSegments(t); assert.equal(walls.length, 30);
       for (const s of walls) {
         for (const value of [s.x0, s.y0, s.x1, s.y1]) assert.ok(Number.isFinite(value) && Math.abs(value) <= .5);
         assert.ok(distanceToSegment(0, 0, s) > .16, 'wall intersects the diamond chamber');
       }
-      assert.ok(walls.filter((s) => s.moving).length <= 2, 'too many gates move together');
+      assert.ok(walls.filter((s) => s.moving).length <= 3, 'too many gates move together');
     }
   }
 });
@@ -65,7 +65,7 @@ test('settling a morph does not cause a pose discontinuity, including wraparound
 });
 test('angle interpolation takes the short arc', () => { near(angleLerp(Math.PI - .1, -Math.PI + .1, .5), Math.PI); });
 test('mobile/desktop geometry fits the canvas, and desktop copy is protected', () => {
-  for (const [w, h] of [[320, 740], [390, 740], [768, 700], [900, 640], [1536, 640], [2560, 640]]) {
+  for (const [w, h] of [[320, 560], [390, 560], [768, 620], [900, 640], [1536, 640], [2560, 640]]) {
     const v = layout(w, h); const scene = buildScene(v, new Timeline(), new StrokeBuffer());
     for (const s of scene.walls) for (const p of [[s.x0, s.y0], [s.x1, s.y1]]) {
       assert.ok(p[0] >= 0 && p[0] <= w && p[1] >= 0 && p[1] <= h);
@@ -85,7 +85,7 @@ test('stroke storage is bounded, normalized, finite and frame-rate independent',
 test('maximum scene fits the fixed GPU storage buffer', () => {
   const s = new StrokeBuffer(); for (let i=0;i<100;i++) s.add(.1,.1,.2,.2);
   const scene = buildScene(layout(1536,640), new Timeline(), s);
-  assert.ok(scene.shapes.length <= 96); assert.ok(scene.shapes.every((s) => s.color.every(Number.isFinite)));
+  assert.ok(scene.shapes.length <= 128); assert.ok(scene.shapes.every((s) => s.color.every(Number.isFinite)));
 });
 test('cascade intervals are contiguous, angular growth is fourfold, atlas size stays constant', () => {
   for (let level=0;level<5;level++) {
@@ -108,4 +108,18 @@ test('fallback visibility clips each light at an opaque barrier', () => {
 test('enabling reduced motion midway does not trap the Next button forever', () => {
   const t=new Timeline(); t.next(); advance(t,.5); t.reduced=true;
   assert.equal(t.next(),true); assert.equal(t.preset,1); assert.equal(t.phase,'hold');
+});
+test('every layout contains chamfers, distinct gates and unobstructed built-in light cores', () => {
+  const t = new Timeline(); const signatures = new Set();
+  for (let p=0;p<4;p++) {
+    t.preset=t.target=p;
+    const scene=buildScene(layout(1536,640),t,new StrokeBuffer());
+    signatures.add(JSON.stringify(scene.walls));
+    assert.ok(scene.walls.filter(s=>Math.abs(s.x1-s.x0)>1&&Math.abs(s.y1-s.y0)>1).length>=6);
+    for (const light of scene.lights) {
+      const x=(light.x0+light.x1)/2, y=(light.y0+light.y1)/2;
+      assert.ok(scene.walls.every(w=>distanceToSegment(x,y,w)>w.radius+light.radius));
+    }
+  }
+  assert.equal(signatures.size,4);
 });

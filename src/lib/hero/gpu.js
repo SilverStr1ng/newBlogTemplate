@@ -2,21 +2,22 @@ import { fieldSize, cascadeConfig } from './scene.js';
 import { FIELD, CASCADE, COMPOSITE } from './shaders.js';
 
 const LEVELS = 5;
-const MAX_SHAPES = 96;
+const MAX_SHAPES = 128;
 
-/** No framework or GPU library dependency. A failed/lost device falls back through onLost. */
+/** Bounded native GPU renderer. Only one frame is in flight; newer inputs coalesce. */
 export async function createGPU(canvas, onLost, signal) {
   if (!navigator.gpu) throw new Error('WebGPU unavailable');
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'low-power' });
   if (!adapter || signal.aborted) throw new Error('WebGPU initialization cancelled or no adapter');
   const device = await adapter.requestDevice();
   if (signal.aborted) { device.destroy(); throw new Error('WebGPU initialization cancelled'); }
-  let destroyed = false;
+  let destroyed = false, inFlight = false, pending = null;
   let context;
+  let completion = Promise.resolve();
   const buffers = [], textures = [];
   const clean = () => {
     if (destroyed) return;
-    destroyed = true;
+    destroyed = true; pending = null;
     for (const texture of textures) texture.destroy();
     for (const buffer of buffers) buffer.destroy();
     context?.unconfigure(); device.destroy();
@@ -30,7 +31,6 @@ export async function createGPU(canvas, onLost, signal) {
     device.lost.then((info) => fail(new Error(`WebGPU device lost: ${info.reason}`)));
     device.addEventListener('uncapturederror', (event) => fail(event.error));
     signal.addEventListener('abort', clean, { once: true });
-
     const module = async (code, label) => {
       const shader = device.createShaderModule({ code, label });
       const info = await shader.getCompilationInfo();
@@ -60,10 +60,11 @@ export async function createGPU(canvas, onLost, signal) {
       const t = device.createTexture({ size: [width, height], format: 'rgba16float', usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING });
       textures.push(t); return t;
     };
-    return {
+    const renderer = {
       get alive() { return !destroyed; },
       resize(w, h, dpr = 1) {
         if (destroyed) return;
+        pending = null; // an old coordinate system must not be submitted after resize
         cssWidth = Math.max(1, w); cssHeight = Math.max(1, h);
         const ratio = Math.min(dpr || 1, 1.5, Math.sqrt(1_600_000 / (cssWidth * cssHeight)));
         const max = device.limits.maxTextureDimension2D;
@@ -74,7 +75,6 @@ export async function createGPU(canvas, onLost, signal) {
         width = size.width; height = size.height;
         textures.splice(0).forEach((t) => t.destroy());
         const field = texture(); const cascades = Array.from({ length: LEVELS }, texture);
-        // A distinct dummy input avoids binding the same subresource for read and write.
         const dummy = texture();
         fieldGroup = bind(fieldPipeline, [{ buffer: params[0] }, { buffer: shapeBuffer }, field.createView()]);
         cascadeGroups = cascades.map((t, i) => bind(cascadePipeline, [{ buffer: params[i + 1] }, field.createView(), (cascades[i + 1] || dummy).createView(), t.createView()]));
@@ -83,6 +83,7 @@ export async function createGPU(canvas, onLost, signal) {
       render(scene) {
         if (destroyed || !width) return;
         if (scene.shapes.length > MAX_SHAPES) throw new RangeError('Hero shape buffer capacity exceeded');
+        if (inFlight) { pending = scene; return; }
         const sx = width / cssWidth, sy = height / cssHeight;
         scene.shapes.forEach((shape, i) => shapeData.set([
           shape.x0 * sx, shape.y0 * sy, shape.x1 * sx, shape.y1 * sy,
@@ -90,7 +91,7 @@ export async function createGPU(canvas, onLost, signal) {
         ], i * 8));
         device.queue.writeBuffer(shapeBuffer, 0, shapeData, 0, scene.shapes.length * 8);
         const write = (buffer, config = { spacing: 0, side: 0, start: 0, end: 0 }, last = false) => {
-          uniformData.set([width, height, canvas.width, canvas.height, config.spacing, config.side, config.start, config.end, scene.shapes.length, last ? 1 : 0, 1.05, 0]);
+          uniformData.set([width, height, canvas.width, canvas.height, config.spacing, config.side, config.start, config.end, scene.shapes.length, last ? 1 : 0, .95, 0]);
           device.queue.writeBuffer(buffer, 0, uniformData);
         };
         write(params[0]); write(params[LEVELS + 1]);
@@ -105,8 +106,21 @@ export async function createGPU(canvas, onLost, signal) {
         const pass = encoder.beginRenderPass({ colorAttachments: [{ view: context.getCurrentTexture().createView(), clearValue: { r: 0, g: 0, b: 0, a: 1 }, loadOp: 'clear', storeOp: 'store' }] });
         pass.setPipeline(compositePipeline); pass.setBindGroup(0, compositeGroup); pass.draw(3); pass.end();
         device.queue.submit([encoder.finish()]);
+        // Software/slow adapters must not accumulate dozens of expensive morph frames.
+        // The optional guard also permits simple API test doubles, not a GPU substitute.
+        if (device.queue.onSubmittedWorkDone) {
+          inFlight = true;
+          completion = device.queue.onSubmittedWorkDone().then(() => {
+            inFlight = false;
+            if (destroyed || !pending) return;
+            const latest = pending; pending = null;
+            try { renderer.render(latest); } catch (error) { fail(error); }
+          }).catch(fail);
+        }
       },
+      async flush() { while (inFlight && !destroyed) await completion; },
       destroy: clean,
     };
+    return renderer;
   } catch (error) { clean(); throw error; }
 }
