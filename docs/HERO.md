@@ -1,118 +1,103 @@
 # Living labyrinth hero
 
-The homepage still mounts `LightHero` with `client:load`. The original diamond-model
-JSON, article list, routes, assets, dependencies and lockfile are unchanged.
+The homepage uses `LightHero` with `client:load`. Blog routes, content, diamond
+asset, runtime dependencies and the application lockfile are unchanged.
 
-## What actually renders
+## Presentation
 
-The previous component called `getContext('2d')`, drew radial gradients and projected
-shadow polygons, and labelled that work "radiance cascades". This implementation
-has two explicitly different backends:
+The visible description, draw hint, article CTA, preset/countdown/backend readout
+and text-button group have been removed. Only the title and existing eyebrow
+remain. A small icon-only pause control preserves control over autoplay. Touch
+screens also get an icon-only drawing toggle so ordinary swipes still scroll.
+Keyboard-only place/next/reset controls are revealed **only while focused**.
+There is no visible telemetry. Inspect `.hero.dataset.backend` for `webgpu`, `2d`
+or `unavailable`; the fallback must not be mistaken for radiance cascades.
 
-- **WebGPU:** an analytic capsule distance/emission field, five direction-first
-  radiance cascades, far-to-near radiance/transmittance merging, then a
-  visibility-aware full-screen reconstruction. Walls, the central emissive core,
-  both coloured emitters and up to 64 painted segments enter the same GPU field.
-- **2D fallback:** visibility-clipped radial lights composited independently.
-  This is an approximation, not RC, and the UI says so. To bound CPU work, only
-  the three built-in sources and five latest painted segments illuminate the
-  fallback scene; all live painted segments retain their visible strokes.
+Navigation links for Posts/Cases are zinc-200 when inactive and white when active
+or hovered. At narrow widths the GitHub wordmark becomes its existing arrow link,
+with its accessible name preserved, to avoid squeezing the other navigation.
 
-This is **2D emitted-light transport with opaque occlusion**, not a multi-bounce
-GI, caustics, spectral dispersion or refractive diamond solver. The supplied
-faceted 3D model is projected on a separate Canvas foreground over a small 2D
-emissive core. Finite probes, ray steps and spatial interpolation can still
-introduce bias/softness; this is not a physically exact renderer.
+## Scene and timing
 
-## Modules
+The 24-segment fixed scaffold combines a broken chamfered inner chamber, staggered
+outer galleries and diagonal passages. Six gates translate, rotate or retract;
+only three move per transition. Four curated states cycle, with a 12-second hold,
+1.8-second morph and 4-second post-drawing observation window. All intermediate
+poses retain a clear diamond chamber. It is an optical scene, not a guaranteed
+walkable generated maze. Walls are opaque geometry, not decorative light strokes.
 
-| File | Responsibility |
-| --- | --- |
-| `scene.js` | Curated geometry, deterministic timing, normalized bounded strokes, resolution policy. |
-| `shaders.js` | Distance/emission field, interval tracing, cascade merge and reconstruction WGSL. |
-| `gpu.js` | Device/pipelines, separate uniforms per pass, texture/buffer ownership and teardown. |
-| `painter.js` | Supplied diamond mesh, wall detail, light strokes and non-RC fallback. |
-| `controller.js` | Pointer capture, accessibility preferences, visibility, scheduling and lifecycle. |
-| `LightHero.svelte` | Responsive copy, accessible HTML controls, backend and layout status. |
+Drawing freezes the current morph. Pause freezes geometry and stroke aging.
+Reduced motion disables autoplay and fades; explicit Next changes state without
+animation. Touch scrolling is preserved until touch drawing is explicitly enabled.
+Strokes last 4.5 seconds with a maximum of 64 segments; input is in normalized CSS
+coordinates. A 128-shape storage limit covers 30 walls plus all built-in/user lights.
 
-There is no new runtime dependency and no imported vgpu package. The GPU backend
-uses the browser's native WebGPU API. Using two canvases intentionally avoids
-requesting an incompatible 2D context on a canvas already initialized for WebGPU.
+## Rendering and shadow refinement
 
-## Choreography and tuning
+`scene.js` owns geometry/time, `shaders.js` the WGSL, `gpu.js` device/resources,
+`painter.js` the original diamond/foreground and 2D fallback, `controller.js` input
+and lifecycle. This is native WebGPU, with no imported vgpu package.
 
-`SETTINGS` in `scene.js` defines a **12-second stable hold**, **1.8-second morph**,
-**4-second post-interaction hold**, **4.5-second stroke lifetime**, and **64-segment
-limit**. Durations use elapsed seconds, not frame counts. Background/offscreen
-time is excluded rather than caught up on return.
+The field is a sampled capsule distance/emission texture, followed by five
+radiance/transmittance cascades and reconstruction. It models **2D emitted light
+with opaque occlusion**, not multibounce GI, refraction, dispersion or caustics.
+The 3D diamond is an overlaid mesh with a separate 2D emissive core.
 
-Four layouts cycle in a fixed order. Sixteen permanent segments retain spatial
-reference; only two of four gates move during each transition. Gate interpolation
-is staggered and eased, angles use the shortest arc, and the diamond chamber
-remains clear through the tested intermediate poses. Some gate/scaffold overlap
-is intentional, forming closed barriers; this is a visual light labyrinth, not
-a generated maze with guaranteed navigable start/end routes.
+The original merge averaged upstream radiance and multiplied it by a single
+centre ray. The revised merge traces to the actual upstream interval starts,
+composes **each of four angular children at each spatial neighbour before
+averaging**, and clamps boundary probes. This is a forked/bilinear-fix approach
+intended to reduce ringing and unrelated light leaking between probe locations.
+Reference: Osborne & Sannikov, “Radiance cascades: a novel high-resolution formal
+solution for multidimensional non-LTE radiative transfer”, Appendix A,
+https://doi.org/10.1093/rasti/rzae062 .
 
-Drawing freezes the exact current pose, including an unfinished morph. Releasing,
-cancelling or losing pointer capture starts the observation hold. Pause freezes
-geometry and stroke fading. Reduced motion disables autoplay and fading; explicit
-Next changes layouts without animation. Changing reduced motion mid-transition
-does not trap the controls. Reset preserves pause/accessibility preferences.
+Distance is bilinearly reconstructed separately from emission/material. A bounded
+160-step tracer uses the sampled field's gradient bound rather than repeatedly
+subtracting a full pixel (which could exhaust grazing rays and create dark bands).
+Final lighting uses a compact positive 3x3 quadratic reconstruction weighted by
+probe visibility. It does not blur the whole canvas or average black walls into
+nearby light. Exposure/floor brightness are restrained rather than hiding defects
+under more bloom. Sampling remains approximate; do not claim exact transport.
 
-Touch scrolls normally until the explicit touch-drawing mode is enabled. Keyboard
-users can place a light, change layout, pause and reset through real buttons.
+## Work bounds
 
-## Work and resource bounds
+Field/cascade textures remain capped at 512 x 320, divisible by 32; display output
+is capped at DPR 1.5 and about 1.6 million pixels. Forked merging costs more rays
+than the old merge. Stable frames are cached; only one GPU frame is in flight and
+new inputs coalesce to the latest scene. Resize discards stale queued geometry.
+No hardware FPS/battery improvement is claimed without measurement.
 
-The distance field is capped at **512 x 320**, with dimensions divisible by 32.
-All five cascade atlases have the same dimensions. Canvas output is capped at
-DPR 1.5 and approximately 1.6 million pixels. The source/storage limit is checked
-before submission; ray marching uses a finite budget and treats budget exhaustion
-as occluded rather than leaking untested radiance.
-
-A stable scene reuses its last GPU output rather than rebuilding the field for a
-countdown update. Moving/fading scenes use a nominal 30 Hz timer; direct input may
-wake earlier. No frame-rate or battery improvement is claimed without hardware
-measurement. There is no temporal accumulation across moving walls.
-
-Hidden documents and offscreen heroes stop scheduling. Observers, event listeners,
-timeouts, animation frames, textures, buffers and the device are released on
-unmount. GPU initialization cancellation, compilation failure and device loss
-activate or retain a working fallback.
+Hidden/offscreen scheduling, pointer cancellation, reduced motion and cleanup are
+owned by the existing controller. GPU initialization/compilation/device failure
+uses the non-RC Canvas fallback. All resources are released on unmount.
 
 ## Validation
 
-Run the dependency-free logic and mocked GPU lifecycle tests:
-
 ```sh
 node --test tests/hero*.test.mjs
-```
-
-For the actual Astro/Svelte application:
-
-```sh
 pnpm install --frozen-lockfile
 pnpm build
-pnpm dev --background
-# pnpm dev stop / status / logs
 ```
 
-The `Hero checks` pull-request workflow runs the unit tests and production build.
-It does **not** validate shaders on real hardware.
+`Hero checks` additionally installs pinned Playwright 1.63.0 **outside the runtime
+project**, opens the built Astro/Svelte site, checks five viewport widths, all
+four keyboard-selectable layouts, pause/drawing, and executes an opaque-barrier
+pixel fixture through the actual WGSL pipelines. Screenshots and JSON results
+are retained as `hero-browser-results` workflow artifacts. Browser validation
+uses Chromium/SwiftShader: real shader compilation and software execution, **not
+physical GPU testing or a hardware performance benchmark**. A successful CI run,
+not the existence of these scripts, is the evidence that those checks passed.
 
-At authoring time, 22 Node tests passed. A Chromium in-memory module harness also
-exercised the Canvas fallback, controls and layout at 320, 390, 768 and 1536 CSS
-pixels without page exceptions or horizontal overflow. That harness used a small
-mesh fixture, not Svelte compilation or the complete site's original model.
+For local browser validation after building:
 
-The restricted editing container could not download the existing dependencies or
-obtain a WebGPU adapter. Therefore the full production build, Svelte hydration,
-actual WGSL compilation and GPU visual output must be checked separately. A mock
-compilation-error test is only an error-handling test, not shader validation.
+```sh
+npm install --prefix /tmp/hero-browser playwright@1.63.0
+node /tmp/hero-browser/node_modules/playwright/cli.js install --with-deps chromium
+HERO_BROWSER_DEPS=/tmp/hero-browser node tests/hero-browser.mjs
+```
 
-Before merging, verify the PR's production-build result and preview the site in a
-WebGPU-capable browser. Confirm that the status says `WEBGPU · 5 CASCADES` rather
-than silently accepting a fallback. Inspect all four layouts, moving gates,
-painted lights behind walls, narrow viewports, pointer cancellation, tab/offscreen
-resume, reduced motion, and client navigation/unmount. Test device loss/fallback
-as a separate case. Compare GPU timings on target hardware before tuning quality.
+The editing container blocks localhost browser navigation and cannot resolve the
+repository/dependency hosts. Local Node tests can run; full-site and shader checks
+therefore run in the authorized repository's CI instead. Target-device visual
+review/performance measurement remains separate from the software smoke tests.

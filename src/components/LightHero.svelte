@@ -23,7 +23,8 @@
   });
 </script>
 
-<div bind:this={container} class="hero" role="region" aria-labelledby="hero-title">
+<div bind:this={container} class="hero" role="region" aria-labelledby="hero-title"
+  data-backend={state.backend} data-preset={state.preset} data-morphing={state.morphing}>
   <img class="poster" src="/hero-prism.webp" alt="" aria-hidden="true" fetchpriority="high" />
   <canvas bind:this={gpuCanvas} class="gpu" aria-hidden="true"></canvas>
   <canvas bind:this={overlayCanvas} class="scene" class:drawing={state.drawMode} aria-hidden="true"></canvas>
@@ -34,24 +35,27 @@
   <div class="copy">
     <p class="eyebrow">FIELD NOTES / GRAPHICS & LIGHT</p>
     <h1 id="hero-title">rakuyou’s labyrinth</h1>
-    <p class="description">A personal notebook on graphics, radiance cascades<br class="desktop-break" /> & real-time optics.</p>
-    <p class="hint">拖动绘制光源，看光如何穿过迷宫。</p>
-    <a class="archive-link" href="/posts">阅读文章 <span aria-hidden="true">↗</span></a>
   </div>
 
-  <div class="experiment" aria-label="光场实验控制">
-    <div class="readout">
-      <span class="experiment-name">001 / {state.preset}</span>
-      <span class="status"><span class:reconfiguring={state.morphing} class="status-dot" aria-hidden="true"></span>{state.status}</span>
-      <span class="backend">{state.backend === 'webgpu' ? 'WEBGPU · 5 CASCADES' : state.backend === '2d' ? '2D FALLBACK · 非 RC' : state.backend === 'unavailable' ? 'STATIC PREVIEW' : 'INITIALIZING'}</span>
-    </div>
-    <div class="controls">
-      <button class="touch-toggle" disabled={!ready} aria-pressed={state.drawMode} onclick={() => controller?.toggleDraw()}>{state.drawMode ? '退出绘光' : '触屏绘光'}</button>
-      <button disabled={!ready} onclick={() => controller?.placeLight()} title="在迷宫入口放置一个光源，也可使用键盘激活">放置光源</button>
-      <button disabled={!ready || state.busy} onclick={() => controller?.next()}>下一形态 <span aria-hidden="true">↗</span></button>
-      <button disabled={!ready || state.reduced} aria-pressed={state.paused} onclick={() => controller?.pause()} title={state.reduced ? '已遵循系统的减少动态设置' : '暂停或继续自动重组与光迹衰减'}>{state.paused ? '继续' : '暂停'}</button>
-      <button disabled={!ready} onclick={() => controller?.reset()}>重置</button>
-    </div>
+  <!-- No visible description, link, telemetry, countdown, or text-button group.
+       Keep pause operable and preserve keyboard/touch access without visual clutter. -->
+  <div class="quiet-actions">
+    <button class="touch-toggle icon-button" disabled={!ready} aria-pressed={state.drawMode}
+      aria-label={state.drawMode ? '退出触屏绘光' : '启用触屏绘光'} onclick={() => controller?.toggleDraw()}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 16-1 4 4-1L20 7l-3-3Z M14 7l3 3" /></svg>
+    </button>
+    <button class="icon-button" disabled={!ready || state.reduced} aria-pressed={state.paused}
+      aria-label={state.reduced ? '系统已启用减少动态' : state.paused ? '继续场景动画' : '暂停场景动画'}
+      onclick={() => controller?.pause()}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        {#if state.paused}<path d="m9 5 10 7-10 7Z" />{:else}<path d="M8 5v14 M16 5v14" />{/if}
+      </svg>
+    </button>
+  </div>
+  <div class="keyboard-actions" aria-label="迷宫键盘操作">
+    <button disabled={!ready} onclick={() => controller?.placeLight()}>放置光源</button>
+    <button disabled={!ready || state.busy} onclick={() => controller?.next()}>切换迷宫</button>
+    <button disabled={!ready} onclick={() => controller?.reset()}>重置场景</button>
   </div>
 </div>
 
@@ -63,54 +67,29 @@
   .scene { display: block; cursor: crosshair; touch-action: pan-y; }
   .scene.drawing { touch-action: none; }
   .grid, .reading-shade, .bottom-shade { pointer-events: none; }
-  .grid { background-image: linear-gradient(#b6d5e507 1px, transparent 1px), linear-gradient(90deg, #b6d5e507 1px, transparent 1px); background-size: 44px 44px; }
+  .grid { background-image: linear-gradient(#b6d5e505 1px, transparent 1px), linear-gradient(90deg, #b6d5e505 1px, transparent 1px); background-size: 44px 44px; }
   .reading-shade { background: linear-gradient(90deg, #030507f5 0%, #030507ec 28%, #030507b3 43%, transparent 65%); }
   .bottom-shade { background: linear-gradient(0deg, #000 0%, #0008 8%, transparent 27%); }
   .copy { position: relative; top: 50%; transform: translateY(-58%); max-width: 1280px; margin: 0 auto; padding: 0 32px; pointer-events: none; }
-  .eyebrow, .hint, .archive-link, .experiment { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  .eyebrow { margin: 0 0 24px; font-size: 10px; letter-spacing: .18em; color: #9baeba; }
+  .eyebrow { margin: 0 0 24px; font: 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .18em; color: #9baeba; }
   h1 { max-width: 650px; margin: 0; color: #f6f6f2; font-family: var(--font-serif, Georgia, 'Times New Roman', serif); font-size: clamp(44px, 4.4vw, 68px); font-weight: 400; line-height: 1.08; letter-spacing: -.045em; }
-  .description { max-width: 520px; margin: 22px 0 0; color: #b5bec5; font-size: 15px; line-height: 1.8; font-weight: 300; }
-  .hint { margin: 18px 0 0; color: #94a6b3; font-size: 11px; letter-spacing: .04em; }
-  .archive-link { display: inline-flex; gap: 24px; align-items: center; min-height: 44px; margin-top: 18px; pointer-events: auto; color: #dde6e9; font-size: 12px; text-decoration: none; border-bottom: 1px solid #82939d45; }
-  .archive-link:hover { color: #a5efd5; border-color: currentColor; }
-  .experiment { position: absolute; bottom: 25px; right: max(32px, calc((100% - 1216px) / 2)); left: max(32px, calc((100% - 1216px) / 2)); display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; font-size: 10px; }
-  .readout { display: grid; gap: 7px; min-width: 0; }
-  .experiment-name { color: #c3cdd4; letter-spacing: .1em; }
-  .status { display: flex; align-items: center; gap: 8px; color: #a9b9c4; }
-  .status-dot { width: 4px; height: 4px; border-radius: 50%; background: #89cbb5; }
-  .status-dot.reconfiguring { background: #b4a0db; }
-  .backend { color: #8896a1; font-size: 9px; letter-spacing: .09em; }
-  .controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
-  button { min-height: 44px; padding: 0 13px; font: inherit; font-size: 11px; color: #c7d0d7; border: 1px solid transparent; border-radius: 3px; background: #090e1480; cursor: pointer; }
-  button:hover:not(:disabled), button[aria-pressed='true'] { color: #b8f2db; border-color: #97c7b744; background: #101b23; }
-  button:disabled { cursor: default; opacity: .45; }
-  button:focus-visible, .archive-link:focus-visible { outline: 2px solid #c3eadf; outline-offset: 4px; }
+  .quiet-actions { position: absolute; right: 24px; bottom: 20px; display: flex; gap: 4px; }
+  .icon-button { display: grid; place-items: center; width: 44px; height: 44px; border: 0; background: transparent; color: #91a7b6; cursor: pointer; border-radius: 50%; }
+  .icon-button svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-button:hover, .icon-button[aria-pressed='true'] { color: #e4f3ef; background: #15202999; }
+  .icon-button:disabled { opacity: .35; cursor: default; }
+  button:focus-visible { outline: 2px solid #c3eadf; outline-offset: 3px; }
   .touch-toggle { display: none; }
-  @media (pointer: coarse) { .touch-toggle { display: block; } }
+  .keyboard-actions { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .keyboard-actions:focus-within { left: 24px; bottom: 20px; width: auto; height: auto; padding: 8px; display: flex; gap: 4px; clip-path: none; overflow: visible; background: #080d14; border-radius: 4px; }
+  .keyboard-actions button { min-height: 44px; padding: 0 10px; border: 0; border-radius: 3px; background: transparent; color: #dae4eb; font: 11px ui-monospace, monospace; cursor: pointer; }
+  @media (any-pointer: coarse) { .touch-toggle { display: grid; } }
   @media (max-width: 899px) {
-    .hero { height: 700px; }
-    .copy { top: 60px; transform: none; padding: 0 24px; }
+    .hero { height: 620px; }
+    .copy { top: 64px; transform: none; padding: 0 24px; }
     .eyebrow { margin-bottom: 18px; font-size: 9px; }
     h1 { max-width: 600px; font-size: clamp(38px, 6.8vw, 54px); letter-spacing: -.04em; }
-    .description { max-width: 500px; margin-top: 16px; font-size: 13px; }
-    .desktop-break { display: none; }
-    .hint { margin-top: 10px; font-size: 10px; }
-    .archive-link { margin-top: 8px; }
-    .reading-shade { background: linear-gradient(180deg, #030507fc 0%, #030507ed 30%, #03050780 39%, transparent 54%); }
-    .experiment { left: 24px; right: 24px; bottom: 16px; gap: 10px; align-items: center; }
-    .readout { gap: 6px; }
-    .experiment-name { max-width: 165px; font-size: 9px; letter-spacing: 0; }
-    .backend { font-size: 8px; letter-spacing: 0; }
-    .controls { max-width: 270px; gap: 0; }
-    button { padding: 0 9px; font-size: 10px; }
+    .reading-shade { background: linear-gradient(180deg, #030507fc 0%, #030507e0 22%, #03050750 35%, transparent 48%); }
   }
-  @media (max-width: 480px) {
-    .hero { height: 740px; }
-    .experiment { flex-direction: column; align-items: stretch; }
-    .readout { grid-template-columns: 1fr auto; gap: 5px 10px; }
-    .backend { grid-column: 1 / -1; }
-    .controls { max-width: none; justify-content: space-between; }
-    button { padding: 0 6px; }
-  }
+  @media (max-width: 480px) { .hero { height: 560px; } .quiet-actions { right: 16px; bottom: 12px; } }
 </style>
