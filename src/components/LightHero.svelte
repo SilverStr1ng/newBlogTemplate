@@ -26,7 +26,7 @@
   let lastY = 0;
 
   const strokePalette = [
-    { hex: '#00e5ff', r: 0, g: 229, b: 255 },   // Cyan
+    { hex: '#00e5ff', r: 0, g: 229, b: 255 },   // Electric Cyan
     { hex: '#ff3366', r: 255, g: 51, b: 102 },  // Neon Rose
     { hex: '#ffea00', r: 255, g: 234, b: 0 },   // Electric Yellow
     { hex: '#00ff66', r: 0, g: 255, b: 102 },   // Neon Green
@@ -101,11 +101,56 @@
     window.addEventListener('mousemove', handlePointerMove);
     window.addEventListener('mouseup', handlePointerUp);
 
-    let startTime = performance.now();
+    const startTime = performance.now();
+    let lastFrameTime = startTime;
+    let mazeTime = 0;
+    let nextRebuild = 10 + Math.random() * 10;
+    let rebuildStart = 0;
+    let rebuildDuration = 1.5;
+    let rebuilding = false;
+    let expanded = false;
+
+    // Persistent wall identities: change their poses, never replace the maze mid-frame.
+    const walls = [
+      { x: -0.38, y: -0.30, angle: 0, length: 0.24 },
+      { x: -0.12, y: -0.34, angle: 0, length: 0.20 },
+      { x: 0.18, y: -0.30, angle: 0, length: 0.26 },
+      { x: 0.40, y: -0.16, angle: Math.PI / 2, length: 0.22 },
+      { x: 0.34, y: 0.12, angle: Math.PI / 2, length: 0.22 },
+      { x: 0.20, y: 0.32, angle: 0, length: 0.24 },
+      { x: -0.10, y: 0.34, angle: 0, length: 0.20 },
+      { x: -0.38, y: 0.22, angle: Math.PI / 2, length: 0.20 },
+      { x: -0.24, y: 0.02, angle: Math.PI / 2, length: 0.20 },
+      { x: 0.04, y: -0.18, angle: 0, length: 0.18 },
+      { x: 0.22, y: 0.02, angle: Math.PI / 2, length: 0.18 },
+      { x: -0.02, y: 0.18, angle: 0, length: 0.20 },
+    ];
+    let fromPoses = walls.map(() => 0);
+    let toPoses = [...fromPoses];
+
+    const resumeClock = () => { lastFrameTime = performance.now(); };
+    document.addEventListener('visibilitychange', resumeClock);
 
     const render = () => {
       animId = requestAnimationFrame(render);
-      const elapsed = (performance.now() - startTime) * 0.001;
+      const now = performance.now();
+      const elapsed = (now - startTime) * 0.001;
+      if (!document.hidden) mazeTime += (now - lastFrameTime) * 0.001;
+      lastFrameTime = now;
+
+      if (!rebuilding && mazeTime >= nextRebuild) {
+        rebuilding = true;
+        rebuildStart = mazeTime;
+        rebuildDuration = 1 + Math.random();
+        nextRebuild = rebuildStart + 10 + Math.random() * 10;
+        expanded = !expanded;
+        fromPoses = [...toPoses];
+        toPoses = walls.map(() => expanded ? 0.65 + Math.random() * 0.35 : 0);
+      }
+      const progress = rebuilding ? Math.min(1, (mazeTime - rebuildStart) / rebuildDuration) : 1;
+      // Quintic easing brings each mechanism to rest without a velocity snap.
+      const eased = progress ** 3 * (progress * (progress * 6 - 15) + 10);
+      if (progress === 1) rebuilding = false;
 
       const w = canvas.width;
       const h = canvas.height;
@@ -136,12 +181,36 @@
         ctx.stroke();
       }
 
-      // 2. Refined Positions (Well-spaced to never crowd the title text)
+      // 2. Element Coordinates
       const centerX = w * 0.58;
       const centerY = h * 0.48;
-      const diamondScale = Math.min(w, h) * 0.16;
+      const diamondScale = Math.min(w, h) * 0.125;
+      const mazeScale = Math.min(w * 0.88, h);
+      const mazeSegments = walls.flatMap((wall, i) => {
+        const pose = fromPoses[i] + (toPoses[i] - fromPoses[i]) * eased;
+        let { x, y, angle, length } = wall;
+        const motion = i % 4;
+        if (motion === 0) x += pose * 0.10; // Sliding rail
+        if (motion === 1) angle += pose * Math.PI / 2; // Rotary partition
+        if (motion === 3) length *= 1 - pose * 0.65; // Telescoping wall
+        const dx = Math.cos(angle), dy = Math.sin(angle);
+        const point = (offset: number) => ({
+          x: centerX + (x + dx * offset) * mazeScale,
+          y: centerY + (y + dy * offset) * mazeScale,
+        });
+        const half = length / 2;
+        if (motion === 2) {
+          // Two rigid leaves slide apart to open a passage.
+          const gap = pose * 0.07;
+          return [
+            { a: point(-half - gap), b: point(-gap) },
+            { a: point(gap), b: point(half + gap) },
+          ];
+        }
+        return [{ a: point(-half), b: point(half) }];
+      });
 
-      // Fixed Neon Occluders/Emitters (Moved further out to frame the scene gracefully):
+      // Fixed Neon Occluders/Emitters:
       // Green neon bar: positioned lower-left, away from the title area
       const g0 = { x: centerX - w * 0.28, y: centerY + h * 0.28 };
       const g1 = { x: centerX - w * 0.14, y: centerY - h * 0.02 };
@@ -150,39 +219,44 @@
       const p0 = { x: centerX + w * 0.16, y: centerY - h * 0.24 };
       const p1 = { x: centerX + w * 0.32, y: centerY + h * 0.16 };
 
-      // Helper for soft, realistic Radiance Cascades penumbra shadows (Grid remains visible!)
-      function castSoftPenumbraShadow(x0: number, y0: number, x1: number, y1: number, length: number) {
-        if (!ctx) return;
-        const d0x = x0 - centerX, d0y = y0 - centerY;
-        const d1x = x1 - centerX, d1y = y1 - centerY;
+      // Universal Physical Occlusion Shadow Generator (Projects penumbra shadow away from any light source!)
+      function castOcclusionShadow(
+        lightX: number, lightY: number,
+        barX0: number, barY0: number,
+        barX1: number, barY1: number,
+        length: number,
+        intensity: number
+      ) {
+        if (!ctx || intensity <= 0.01) return;
+        const d0x = barX0 - lightX, d0y = barY0 - lightY;
+        const d1x = barX1 - lightX, d1y = barY1 - lightY;
         const dist0 = Math.hypot(d0x, d0y) || 1;
         const dist1 = Math.hypot(d1x, d1y) || 1;
 
-        const shadowP0 = { x: x0 + (d0x / dist0) * length, y: y0 + (d0y / dist0) * length };
-        const shadowP1 = { x: x1 + (d1x / dist1) * length, y: y1 + (d1y / dist1) * length };
+        const shadowP0 = { x: barX0 + (d0x / dist0) * length, y: barY0 + (d0y / dist0) * length };
+        const shadowP1 = { x: barX1 + (d1x / dist1) * length, y: barY1 + (d1y / dist1) * length };
 
         ctx.save();
         ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.lineTo(x1, y1);
+        ctx.moveTo(barX0, barY0);
+        ctx.lineTo(barX1, barY1);
         ctx.lineTo(shadowP1.x, shadowP1.y);
         ctx.lineTo(shadowP0.x, shadowP0.y);
         ctx.closePath();
 
-        // Soft, diffused penumbra (max opacity only 0.45, grid remains visible)
         const shadowGrad = ctx.createLinearGradient(
-          (x0 + x1) / 2, (y0 + y1) / 2,
+          (barX0 + barX1) / 2, (barY0 + barY1) / 2,
           (shadowP0.x + shadowP1.x) / 2, (shadowP0.y + shadowP1.y) / 2
         );
-        shadowGrad.addColorStop(0, 'rgba(5, 6, 9, 0.48)');
-        shadowGrad.addColorStop(0.5, 'rgba(5, 6, 9, 0.22)');
+        shadowGrad.addColorStop(0, `rgba(5, 6, 9, ${0.48 * intensity})`);
+        shadowGrad.addColorStop(0.5, `rgba(5, 6, 9, ${0.22 * intensity})`);
         shadowGrad.addColorStop(1, 'rgba(5, 6, 9, 0.0)');
         ctx.fillStyle = shadowGrad;
         ctx.fill();
         ctx.restore();
       }
 
-      // --- 3. RADIANCE CASCADES: GLOBAL ILLUMINATION & LIGHT BLEEDING ---
+      // --- 3. RADIANCE CASCADES: MULTI-BOUNCE GLOBAL ILLUMINATION ---
       // A. Green Light Bleed onto Floor Grid
       const greenRad = ctx.createRadialGradient(
         (g0.x + g1.x) / 2, (g0.y + g1.y) / 2, 8,
@@ -207,7 +281,7 @@
       ctx.fillStyle = purpleRad;
       ctx.fillRect(0, 0, w, h);
 
-      // C. Central Diamond Emitter Radiance (Warm White Light Across Floor Grid)
+      // C. Central Diamond Emitter Radiance
       const diamondRad = ctx.createRadialGradient(centerX, centerY, diamondScale * 0.3, centerX, centerY, w * 0.44);
       diamondRad.addColorStop(0, 'rgba(255, 248, 235, 0.42)');
       diamondRad.addColorStop(0.25, 'rgba(255, 235, 210, 0.18)');
@@ -216,11 +290,23 @@
       ctx.fillStyle = diamondRad;
       ctx.fillRect(0, 0, w, h);
 
-      // D. Soft Penumbra Shadows behind the fixed Neon Bars
-      castSoftPenumbraShadow(g0.x, g0.y, g1.x, g1.y, w * 0.36);
-      castSoftPenumbraShadow(p0.x, p0.y, p1.x, p1.y, w * 0.36);
+      // D. Shadows of Fixed Bars Cast by the Central Diamond
+      castOcclusionShadow(centerX, centerY, g0.x, g0.y, g1.x, g1.y, w * 0.36, 1.0);
+      castOcclusionShadow(centerX, centerY, p0.x, p0.y, p1.x, p1.y, w * 0.36, 1.0);
+      const castMazeShadows = (x: number, y: number, intensity: number) => {
+        for (const { a, b } of mazeSegments) {
+          castOcclusionShadow(x, y, a.x, a.y, b.x, b.y, mazeScale * 0.65, intensity);
+        }
+      };
+      castMazeShadows(centerX, centerY, 0.85);
+      castMazeShadows((g0.x + g1.x) / 2, (g0.y + g1.y) / 2, 0.4);
+      castMazeShadows((p0.x + p1.x) / 2, (p0.y + p1.y) / 2, 0.4);
 
-      // --- 4. USER DRAWN LIGHT STROKES (Pure Emitters: Radiate light, NO ugly shadows!) ---
+      // --- 4. USER DRAWN LIGHT STROKES: FULL MUTUAL RADIANCE CASCADES INTERACTION ---
+      // User strokes illuminate the room AND cast shadows when hitting occluders!
+      let userIlluminatedGreenGlow: { color: string; intensity: number } | null = null;
+      let userIlluminatedPurpleGlow: { color: string; intensity: number } | null = null;
+
       for (let i = userStrokes.length - 1; i >= 0; i--) {
         const s = userStrokes[i];
         s.life -= 0.0035; // Fades out smoothly over ~4 seconds
@@ -233,17 +319,38 @@
         const midY = (s.y0 + s.y1) * 0.5;
         const strokeLen = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
 
-        // A. RADIANCE CASCADES: Radiates 360-degree colored light onto the grid floor!
-        const bleedR = Math.max(strokeLen * 2.2, 80) * s.life;
+        // A. Stroke bleeds colored light onto the grid floor in 360 degrees
+        const bleedR = Math.max(strokeLen * 2.2, 85) * s.life;
         const bleedGrad = ctx.createRadialGradient(midX, midY, 2, midX, midY, bleedR);
-        bleedGrad.addColorStop(0, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.36 * s.life})`);
-        bleedGrad.addColorStop(0.35, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.14 * s.life})`);
+        bleedGrad.addColorStop(0, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.38 * s.life})`);
+        bleedGrad.addColorStop(0.35, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.15 * s.life})`);
         bleedGrad.addColorStop(0.7, `rgba(${s.rgb.r}, ${s.rgb.g}, ${s.rgb.b}, ${0.03 * s.life})`);
         bleedGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = bleedGrad;
         ctx.fillRect(0, 0, w, h);
+        castMazeShadows(midX, midY, s.life * 0.45);
 
-        // B. Luminous Neon Emitter Tube (White-hot core + colored neon bloom)
+        // B. Light bounce onto the Green Bar and Purple Bar:
+        // User strokes illuminate the facing side of the neon bars!
+        const distToGreen = Math.hypot(midX - (g0.x + g1.x) / 2, midY - (g0.y + g1.y) / 2);
+        if (distToGreen < w * 0.35) {
+          const bounceStrength = (1.0 - distToGreen / (w * 0.35)) * s.life;
+          userIlluminatedGreenGlow = {
+            color: s.color,
+            intensity: Math.max(userIlluminatedGreenGlow?.intensity || 0, bounceStrength),
+          };
+        }
+
+        const distToPurple = Math.hypot(midX - (p0.x + p1.x) / 2, midY - (p0.y + p1.y) / 2);
+        if (distToPurple < w * 0.35) {
+          const bounceStrength = (1.0 - distToPurple / (w * 0.35)) * s.life;
+          userIlluminatedPurpleGlow = {
+            color: s.color,
+            intensity: Math.max(userIlluminatedPurpleGlow?.intensity || 0, bounceStrength),
+          };
+        }
+
+        // C. Luminous Neon Emitter Tube (White-hot core + colored neon bloom)
         ctx.save();
         ctx.strokeStyle = s.color;
         ctx.lineWidth = 5.5 * s.life;
@@ -265,7 +372,26 @@
         ctx.restore();
       }
 
-      // --- 5. RENDER FIXED NEON EMITTER BARS ---
+      // The visible walls and their shadows share the same interpolated endpoints.
+      ctx.save();
+      ctx.lineCap = 'butt';
+      for (const { a, b } of mazeSegments) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.lineWidth = 7;
+        ctx.strokeStyle = '#10191e';
+        ctx.stroke();
+        const edge = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+        edge.addColorStop(0, 'rgba(94, 207, 170, 0.65)');
+        edge.addColorStop(1, 'rgba(172, 143, 213, 0.65)');
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = edge;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // --- 5. RENDER FIXED NEON EMITTER BARS (With Light Bounce from User Strokes!) ---
       // A. Green Neon Bar
       ctx.save();
       ctx.strokeStyle = '#22e577';
@@ -282,6 +408,16 @@
       ctx.lineWidth = 2.4;
       ctx.shadowBlur = 6;
       ctx.stroke();
+
+      // If user drew a stroke near the green bar, render color bounce highlight on the bar!
+      if (userIlluminatedGreenGlow && userIlluminatedGreenGlow.intensity > 0.05) {
+        ctx.strokeStyle = userIlluminatedGreenGlow.color;
+        ctx.lineWidth = 7.0;
+        ctx.shadowColor = userIlluminatedGreenGlow.color;
+        ctx.shadowBlur = 20;
+        ctx.globalAlpha = userIlluminatedGreenGlow.intensity * 0.6;
+        ctx.stroke();
+      }
       ctx.restore();
 
       // B. Purple Neon Bar
@@ -300,6 +436,16 @@
       ctx.lineWidth = 2.4;
       ctx.shadowBlur = 6;
       ctx.stroke();
+
+      // If user drew a stroke near the purple bar, render color bounce highlight on the bar!
+      if (userIlluminatedPurpleGlow && userIlluminatedPurpleGlow.intensity > 0.05) {
+        ctx.strokeStyle = userIlluminatedPurpleGlow.color;
+        ctx.lineWidth = 7.0;
+        ctx.shadowColor = userIlluminatedPurpleGlow.color;
+        ctx.shadowBlur = 20;
+        ctx.globalAlpha = userIlluminatedPurpleGlow.intensity * 0.6;
+        ctx.stroke();
+      }
       ctx.restore();
 
       // --- 6. RENDER CENTRAL 3D GLB DIAMOND EMITTER (From dflat-D9eRXupj.glb) ---
@@ -426,6 +572,7 @@
     return () => {
       cancelAnimationFrame(animId);
       window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', resumeClock);
       canvas.removeEventListener('mousedown', handlePointerDown);
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', handlePointerUp);
@@ -439,7 +586,7 @@
   role="region"
   aria-label="rakuyou's labyrinth radiance cascades diamond hero"
 >
-  <!-- Radiance Cascades Canvas with 3D Diamond Emitter -->
+  <!-- Radiance Cascades Canvas with 3D Diamond Emitter & Mutual Occlusion -->
   <canvas
     bind:this={canvasRef}
     class="absolute inset-0 w-full h-full block"
