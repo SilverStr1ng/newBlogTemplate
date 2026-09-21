@@ -7,6 +7,7 @@ import { resolve, extname, join } from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(resolve(process.env.HERO_BROWSER_DEPS || '.', 'package.json'));
 const { chromium } = require('playwright');
+const { PNG } = require('pngjs');
 const root = process.cwd();
 const output = resolve('hero-browser-results');
 await mkdir(output, { recursive: true });
@@ -14,7 +15,7 @@ const types = { '.js': 'application/javascript', '.html': 'text/html', '.css': '
 const server = createServer(async (req, res) => {
   try {
     const path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    if (path === '/__fixture') { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><canvas width="192" height="192"></canvas>'); return; }
+    if (path === '/__fixture') { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><style>body{margin:0;background:black}canvas{display:block}</style><canvas width="192" height="192"></canvas>'); return; }
     const source = path.startsWith('/__source/');
     const base = resolve(root, source ? 'src/lib/hero' : 'dist');
     let file = resolve(base, '.' + (source ? path.slice('/__source'.length) : path));
@@ -50,7 +51,18 @@ try {
     assert.equal(metrics.backend, 'webgpu'); assert.equal(metrics.overflow, false, `overflow at ${width}`);
     assert.equal(metrics.oldBlocks, 0); assert.equal(metrics.navColors.length, 2);
     assert.ok(metrics.title.includes('rakuyou'));
-    await page.screenshot({ path: join(output, `hero-${width}.png`) });
+    const shot = await page.screenshot({ path: join(output, `hero-${width}.png`) });
+    // Optional compact, inspectable preview for environments that cannot fetch binary artifacts.
+    if (width === 1536 && process.env.HERO_PREVIEW_LOG === '1') {
+      const preview = await page.evaluate(async (base64) => {
+        const image = new Image(); image.src = 'data:image/png;base64,' + base64; await image.decode();
+        const small = document.createElement('canvas'); small.width = 640; small.height = 375;
+        small.getContext('2d').drawImage(image, 0, 0, 640, 375);
+        return small.toDataURL('image/jpeg', .5).split(',')[1];
+      }, shot.toString('base64'));
+      console.log('HERO_PREVIEW_JPEG=' + preview);
+    }
+    console.log('Viewport check:', JSON.stringify({ width, ...metrics }));
     results.push({ width, ...metrics });
   }
   await page.setViewportSize({ width: 1000, height: 800 });
@@ -78,7 +90,7 @@ try {
   const fixture = await browser.newPage();
   fixture.on('pageerror', (e) => errors.push(String(e)));
   await fixture.goto(origin + '/__fixture');
-  const pixels = await fixture.evaluate(async () => {
+  const failures = await fixture.evaluate(async () => {
     const { createGPU } = await import('/__source/gpu.js');
     const canvas = document.querySelector('canvas');
     const abort = new AbortController(); const failures = [];
@@ -87,18 +99,26 @@ try {
     const wall = { x0: 96, y0: -10, x1: 96, y1: 202, radius: 4, color: [0,0,0] };
     const light = { x0: 45, y0: 65, x1: 45, y1: 125, radius: 6, color: [0.3,1,0.6] };
     renderer.render({ shapes: [wall, light] });
-    // Wait for actual GPU command completion, not an assumed render duration.
     await renderer.flush();
-    const copy = document.createElement('canvas'); copy.width = copy.height = 192;
-    const ctx = copy.getContext('2d'); ctx.drawImage(canvas,0,0);
-    const data = ctx.getImageData(0,0,192,192).data;
-    const mean = (x0,x1) => { let sum=0,n=0; for(let y=50;y<140;y++) for(let x=x0;x<x1;x++) {sum+=data[(y*192+x)*4+1];n++;} return sum/n; };
-    const result = { lit: mean(55,80), shadow: mean(115,155), failures, image: copy.toDataURL() };
-    renderer.destroy(); abort.abort(); return result;
+    // Keep the renderer/device alive until the compositor screenshot is captured.
+    // drawImage(WebGPUCanvas) returned a zero bitmap on this software stack; test
+    // the actual presented pixels instead of treating that readback as light data.
+    window.fixtureCleanup = () => { renderer.destroy(); abort.abort(); };
+    window.fixtureFailures = failures;
+    return failures;
   });
-  await writeFile(join(output, 'occlusion.png'), Buffer.from(pixels.image.split(',')[1], 'base64'));
-  delete pixels.image;
+  const shot = await fixture.locator('canvas').screenshot({ path: join(output, 'occlusion.png') });
+  const image = PNG.sync.read(shot);
+  assert.equal(image.width, 192); assert.equal(image.height, 192);
+  const mean = (x0, x1) => {
+    let sum = 0, n = 0;
+    for (let y=50; y<140; y++) for (let x=x0; x<x1; x++) { sum += image.data[(y*192+x)*4+1]; n++; }
+    return sum/n;
+  };
+  failures.push(...await fixture.evaluate(() => window.fixtureFailures));
+  const pixels = { lit: mean(55,80), shadow: mean(115,155), failures };
   console.log('WebGPU opaque-barrier fixture:', JSON.stringify(pixels));
+  await fixture.evaluate(() => window.fixtureCleanup());
   assert.deepEqual(pixels.failures, []);
   assert.ok(pixels.lit > 25, 'fixture is not actually illuminated');
   assert.ok(pixels.shadow < pixels.lit * .35, 'light leaks through a complete opaque barrier');
